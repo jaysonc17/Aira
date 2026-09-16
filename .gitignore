@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# TypeScript build output
+dist/
+build/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local models / caches
+models/
+.cache/
+
+# IDE
+.idea/
+.vscode/
+
+# Temporary files
+*.tmp
+*.swp
+
+# runtime memory
+long-term-memory.json
