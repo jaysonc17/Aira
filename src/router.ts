@@ -1,14 +1,8 @@
-import type {
-  AIModel,
-} from "./models/local-model.js";
+import type { AIModel } from "./models/local-model.js";
 
-import type {
-  ModelRole,
-} from "./models/model-registry.js";
+import type { ModelRole } from "./models/model-registry.js";
 
-import {
-  routingRules,
-} from "./routing-rules.js";
+import { routingRules } from "./routing-rules.js";
 
 export interface RouteResult {
   role: ModelRole;
@@ -29,15 +23,10 @@ interface ClassificationResponse {
 }
 
 export class Router {
-  constructor(
-    private readonly classifierModel: AIModel,
-  ) {}
+  constructor(private readonly classifierModel: AIModel) {}
 
-  async route(
-    prompt: string,
-  ): Promise<RouteResult> {
-    const ruleMatch =
-      this.matchRule(prompt);
+  async route(prompt: string): Promise<RouteResult> {
+    const ruleMatch = this.matchRule(prompt);
 
     if (ruleMatch) {
       return {
@@ -45,41 +34,26 @@ export class Router {
 
         confidence: 0.95,
 
-        reason:
-          `Matched routing rule: ${ruleMatch.keyword}`,
+        reason: `Matched routing rule: ${ruleMatch.keyword}`,
 
-        matchedRule:
-          ruleMatch.keyword,
+        matchedRule: ruleMatch.keyword,
       };
     }
 
-    return this.classify(
-      prompt,
-    );
+    return this.classify(prompt);
   }
 
-  private matchRule(
-    prompt: string,
-  ):
+  private matchRule(prompt: string):
     | {
         role: ModelRole;
         keyword: string;
       }
     | undefined {
-    const text =
-      prompt.toLowerCase();
+    const text = prompt.toLowerCase();
 
-    for (
-      const rule of routingRules
-    ) {
-      for (
-        const keyword of rule.keywords
-      ) {
-        if (
-          text.includes(
-            keyword.toLowerCase(),
-          )
-        ) {
+    for (const rule of routingRules) {
+      for (const keyword of rule.keywords) {
+        if (text.includes(keyword.toLowerCase())) {
           return {
             role: rule.role,
 
@@ -92,9 +66,7 @@ export class Router {
     return undefined;
   }
 
-  private async classify(
-    prompt: string,
-  ): Promise<RouteResult> {
+  private async classify(prompt: string): Promise<RouteResult> {
     const classifierPrompt = `
 You are a routing classifier
 for a personal AI assistant.
@@ -150,45 +122,29 @@ Rules:
 - Do not include additional fields.
 `;
 
-    const result =
-      await this.classifierModel.generate(
-        {
-          prompt:
-            classifierPrompt,
+    const result = await this.classifierModel.generate({
+      prompt: classifierPrompt,
 
-          maxTokens: 200,
+      maxTokens: 200,
 
-          thinking: false,
-        },
-      );
+      thinking: false,
+    });
 
     try {
-      const parsed =
-        JSON.parse(result) as ClassificationResponse;
+      const parsed = JSON.parse(result) as ClassificationResponse;
 
       const role =
-        parsed.role ===
-          "reasoning" ||
-        parsed.role ===
-          "fast"
+        parsed.role === "reasoning" || parsed.role === "fast"
           ? parsed.role
           : "fast";
 
       const confidence =
-        typeof parsed.confidence ===
-        "number"
-          ? Math.min(
-              1,
-              Math.max(
-                0,
-                parsed.confidence,
-              ),
-            )
+        typeof parsed.confidence === "number"
+          ? Math.min(1, Math.max(0, parsed.confidence))
           : 0;
 
       const reason =
-        typeof parsed.reason ===
-        "string"
+        typeof parsed.reason === "string"
           ? parsed.reason
           : "No routing reason provided";
 
@@ -196,16 +152,13 @@ Rules:
        * Low-confidence decisions are
        * deliberately escalated.
        */
-      if (
-        confidence < 0.75
-      ) {
+      if (confidence < 0.75) {
         return {
           role: "reasoning",
 
           confidence,
 
-          reason:
-            `Low-confidence classification: ${reason}`,
+          reason: `Low-confidence classification: ${reason}`,
         };
       }
 
@@ -228,8 +181,7 @@ Rules:
 
         confidence: 0,
 
-        reason:
-          "Invalid classifier response; escalating to reasoning model",
+        reason: "Invalid classifier response; escalating to reasoning model",
       };
     }
   }

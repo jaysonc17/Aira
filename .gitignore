@@ -18,7 +18,7 @@ build/
 npm-debug.log*
 
 # Local models / caches
-models/
+/models/
 .cache/
 
 # IDE
@@ -31,3 +31,4 @@ models/
 
 # runtime memory
 long-term-memory.json
+aira.mcp.json

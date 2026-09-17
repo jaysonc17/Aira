@@ -1,13 +1,7 @@
-import type {
-  EvaluationResult,
-  Evaluator,
-} from "./evaluator.js";
+import type { EvaluationResult, Evaluator } from "./evaluator.js";
 
 export class SimpleEvaluator implements Evaluator {
-  async evaluate(
-    prompt: string,
-    answer: string,
-  ): Promise<EvaluationResult> {
+  async evaluate(prompt: string, answer: string): Promise<EvaluationResult> {
     const trimmed = answer.trim();
 
     if (!trimmed) {

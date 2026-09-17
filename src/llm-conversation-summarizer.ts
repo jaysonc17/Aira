@@ -1,41 +1,27 @@
-import type {
-    AIModel,
-} from "./models/local-model.js";
+import type { AIModel } from "./models/local-model.js";
 
-import type {
-    ConversationMessage,
-} from "./conversation-memory.js";
+import type { ConversationMessage } from "./conversation-memory.js";
 
-import type {
-    ConversationSummarizer,
-} from "./conversation-summarizer.js";
+import type { ConversationSummarizer } from "./conversation-summarizer.js";
 
-export class LlmConversationSummarizer
-    implements ConversationSummarizer {
-    constructor(
-        private readonly model: AIModel,
-    ) { }
+export class LlmConversationSummarizer implements ConversationSummarizer {
+  constructor(private readonly model: AIModel) {}
 
-    async summarize(
-        previousSummary: string,
-        messages: ConversationMessage[],
-    ): Promise<string> {
-        if (
-            messages.length === 0
-        ) {
-            return previousSummary;
-        }
+  async summarize(
+    previousSummary: string,
+    messages: ConversationMessage[],
+  ): Promise<string> {
+    if (messages.length === 0) {
+      return previousSummary;
+    }
 
-        const conversation =
-            messages
-                .map(
-                    (message) =>
-                        `${message.role.toUpperCase()}: ` +
-                        `${message.content}`,
-                )
-                .join("\n\n");
+    const conversation = messages
+      .map(
+        (message) => `${message.role.toUpperCase()}: ` + `${message.content}`,
+      )
+      .join("\n\n");
 
-        const prompt = `
+    const prompt = `
 You maintain a rolling conversation summary
 for a personal AI assistant.
 
@@ -98,25 +84,23 @@ Do not explain what you are doing.
 Return ONLY the summary text.
 `;
 
-        const result =
-            await this.model.generate({
-                prompt,
-                maxTokens: 500,
-                thinking: false,
-            });
+    const result = await this.model.generate({
+      prompt,
+      maxTokens: 500,
+      thinking: false,
+    });
 
-        const summary =
-            result.trim();
+    const summary = result.trim();
 
-        /*
-         * If the model unexpectedly returns an
-         * empty result, keep the previous summary
-         * rather than destroying useful context.
-         */
-        if (!summary) {
-            return previousSummary;
-        }
-
-        return summary;
+    /*
+     * If the model unexpectedly returns an
+     * empty result, keep the previous summary
+     * rather than destroying useful context.
+     */
+    if (!summary) {
+      return previousSummary;
     }
+
+    return summary;
+  }
 }

@@ -1,24 +1,14 @@
-import {
-  randomUUID,
-} from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import fs from "node:fs";
 
 import path from "node:path";
 
-export type MemorySource =
-  | "explicit"
-  | "inferred"
-  | "updated";
+export type MemorySource = "explicit" | "inferred" | "updated";
 
-export type MemoryLifecycle =
-  | "active"
-  | "stale";
+export type MemoryLifecycle = "active" | "stale";
 
-export type MemoryFreshness =
-  | "stable"
-  | "temporary"
-  | "dynamic";
+export type MemoryFreshness = "stable" | "temporary" | "dynamic";
 
 export interface Memory {
   id: string;
@@ -87,72 +77,46 @@ export class LongTermMemory {
 
   private readonly filePath: string;
 
-  constructor(
-    filePath = path.join(
-      process.cwd(),
-      "long-term-memory.json",
-    ),
-  ) {
-    this.filePath =
-      filePath;
+  constructor(filePath = path.join(process.cwd(), "long-term-memory.json")) {
+    this.filePath = filePath;
 
     this.load();
   }
 
-  add(
-    input: AddMemoryInput,
-  ): Memory {
-    const now =
-      new Date().toISOString();
+  add(input: AddMemoryInput): Memory {
+    const now = new Date().toISOString();
 
     const memory: Memory = {
       id: randomUUID(),
 
-      topic:
-        input.topic,
+      topic: input.topic,
 
-      content:
-        input.content,
+      content: input.content,
 
       createdAt: now,
 
       lastConfirmedAt: now,
 
-      importance:
-        this.clampImportance(
-          input.importance ?? 3,
-        ),
+      importance: this.clampImportance(input.importance ?? 3),
 
-      confidence:
-        this.clampConfidence(
-          input.confidence ?? 1,
-        ),
+      confidence: this.clampConfidence(input.confidence ?? 1),
 
-      embedding:
-        input.embedding,
+      embedding: input.embedding,
 
-      source:
-        input.source ??
-        "explicit",
+      source: input.source ?? "explicit",
 
-      lifecycle:
-        "active",
+      lifecycle: "active",
 
-      freshness:
-        input.freshness ??
-        "stable",
+      freshness: input.freshness ?? "stable",
 
       ...(input.supersedesId
         ? {
-            supersedesId:
-              input.supersedesId,
+            supersedesId: input.supersedesId,
           }
         : {}),
     };
 
-    this.memories.push(
-      memory,
-    );
+    this.memories.push(memory);
 
     this.save();
 
@@ -166,49 +130,28 @@ export class LongTermMemory {
     importance?: number,
     confidence?: number,
   ): Memory | undefined {
-    const memory =
-      this.memories.find(
-        (item) =>
-          item.id === id,
-      );
+    const memory = this.memories.find((item) => item.id === id);
 
     if (!memory) {
       return undefined;
     }
 
-    memory.content =
-      content;
+    memory.content = content;
 
-    memory.embedding =
-      embedding;
+    memory.embedding = embedding;
 
-    memory.lastConfirmedAt =
-      new Date().toISOString();
+    memory.lastConfirmedAt = new Date().toISOString();
 
-    memory.source =
-      "updated";
+    memory.source = "updated";
 
-    memory.lifecycle =
-      "active";
+    memory.lifecycle = "active";
 
-    if (
-      importance !==
-      undefined
-    ) {
-      memory.importance =
-        this.clampImportance(
-          importance,
-        );
+    if (importance !== undefined) {
+      memory.importance = this.clampImportance(importance);
     }
 
-    if (
-      confidence !==
-      undefined
-    ) {
-      memory.confidence =
-        this.clampConfidence(
-          confidence,
-        );
+    if (confidence !== undefined) {
+      memory.confidence = this.clampConfidence(confidence);
     }
 
     this.save();
@@ -216,164 +159,97 @@ export class LongTermMemory {
     return memory;
   }
 
-  confirm(
-    id: string,
-  ): Memory | undefined {
-    const memory =
-      this.memories.find(
-        (item) =>
-          item.id === id,
-      );
+  confirm(id: string): Memory | undefined {
+    const memory = this.memories.find((item) => item.id === id);
 
     if (!memory) {
       return undefined;
     }
 
-    memory.lastConfirmedAt =
-      new Date().toISOString();
+    memory.lastConfirmedAt = new Date().toISOString();
 
-    memory.lifecycle =
-      "active";
+    memory.lifecycle = "active";
 
-    memory.confidence =
-      this.clampConfidence(
-        memory.confidence +
-          0.05,
-      );
+    memory.confidence = this.clampConfidence(memory.confidence + 0.05);
 
     this.save();
 
     return memory;
   }
 
-  supersede(
-    id: string,
-  ): Memory | undefined {
-    const memory =
-      this.memories.find(
-        (item) =>
-          item.id === id,
-      );
+  supersede(id: string): Memory | undefined {
+    const memory = this.memories.find((item) => item.id === id);
 
     if (!memory) {
       return undefined;
     }
 
-    memory.lifecycle =
-      "stale";
+    memory.lifecycle = "stale";
 
     this.save();
 
     return memory;
   }
 
-  setImportance(
-    id: string,
-    importance: number,
-  ): Memory | undefined {
-    const memory =
-      this.memories.find(
-        (item) =>
-          item.id === id,
-      );
+  setImportance(id: string, importance: number): Memory | undefined {
+    const memory = this.memories.find((item) => item.id === id);
 
     if (!memory) {
       return undefined;
     }
 
-    memory.importance =
-      this.clampImportance(
-        importance,
-      );
+    memory.importance = this.clampImportance(importance);
 
     this.save();
 
     return memory;
   }
 
-  setConfidence(
-    id: string,
-    confidence: number,
-  ): Memory | undefined {
-    const memory =
-      this.memories.find(
-        (item) =>
-          item.id === id,
-      );
+  setConfidence(id: string, confidence: number): Memory | undefined {
+    const memory = this.memories.find((item) => item.id === id);
 
     if (!memory) {
       return undefined;
     }
 
-    memory.confidence =
-      this.clampConfidence(
-        confidence,
-      );
+    memory.confidence = this.clampConfidence(confidence);
 
     this.save();
 
     return memory;
   }
 
-  setLifecycle(
-    id: string,
-    lifecycle:
-      MemoryLifecycle,
-  ): Memory | undefined {
-    const memory =
-      this.memories.find(
-        (item) =>
-          item.id === id,
-      );
+  setLifecycle(id: string, lifecycle: MemoryLifecycle): Memory | undefined {
+    const memory = this.memories.find((item) => item.id === id);
 
     if (!memory) {
       return undefined;
     }
 
-    memory.lifecycle =
-      lifecycle;
+    memory.lifecycle = lifecycle;
 
     this.save();
 
     return memory;
   }
 
-  findByTopic(
-    topic: string,
-  ): Memory | undefined {
+  findByTopic(topic: string): Memory | undefined {
     return this.memories.find(
-      (memory) =>
-        memory.topic ===
-          topic &&
-        memory.lifecycle ===
-          "active",
+      (memory) => memory.topic === topic && memory.lifecycle === "active",
     );
   }
 
-  findActiveByTopic(
-    topic: string,
-  ): Memory[] {
+  findActiveByTopic(topic: string): Memory[] {
     return this.memories.filter(
-      (memory) =>
-        memory.topic ===
-          topic &&
-        memory.lifecycle ===
-          "active",
+      (memory) => memory.topic === topic && memory.lifecycle === "active",
     );
   }
 
-  findSimilar(
-    queryEmbedding: number[],
-    threshold = 0.20,
-  ): MemorySearchResult[] {
+  findSimilar(queryEmbedding: number[], threshold = 0.2): MemorySearchResult[] {
     return this.findSimilarInternal(
       queryEmbedding,
 
-      this.memories.filter(
-        (memory) =>
-          memory.lifecycle ===
-          "active",
-      ),
+      this.memories.filter((memory) => memory.lifecycle === "active"),
 
       threshold,
     );
@@ -383,11 +259,7 @@ export class LongTermMemory {
     queryEmbedding: number[],
     threshold = 0,
   ): MemorySearchResult[] {
-    return this.findSimilarInternal(
-      queryEmbedding,
-      this.memories,
-      threshold,
-    );
+    return this.findSimilarInternal(queryEmbedding, this.memories, threshold);
   }
 
   private findSimilarInternal(
@@ -395,427 +267,221 @@ export class LongTermMemory {
     memories: Memory[],
     threshold: number,
   ): MemorySearchResult[] {
-    const now =
-      new Date();
+    const now = new Date();
 
     return memories
-      .map(
-        (memory) => {
-          const score =
-            this.cosineSimilarity(
-              queryEmbedding,
-              memory.embedding,
-            );
+      .map((memory) => {
+        const score = this.cosineSimilarity(queryEmbedding, memory.embedding);
 
-          const semanticConfidence =
-            Math.max(
-              0,
-              Math.min(
-                1,
-                score,
-              ),
-            );
+        const semanticConfidence = Math.max(0, Math.min(1, score));
 
-          const importanceScore =
-            memory.importance /
-            5;
+        const importanceScore = memory.importance / 5;
 
-          const freshnessScore =
-            this.getFreshnessScore(
-              memory,
-              now,
-            );
+        const freshnessScore = this.getFreshnessScore(memory, now);
 
-          const confidenceScore =
-            this.clampConfidence(
-              memory.confidence,
-            );
+        const confidenceScore = this.clampConfidence(memory.confidence);
 
-          const sourceReliabilityScore =
-            this.getSourceReliabilityScore(
-              memory.source,
-            );
+        const sourceReliabilityScore = this.getSourceReliabilityScore(
+          memory.source,
+        );
 
-          /*
-           * Semantic relevance remains the
-           * dominant retrieval signal.
-           *
-           * Confidence and source reliability
-           * can improve ordering between
-           * otherwise relevant memories, but
-           * cannot bypass the semantic gates
-           * applied later by MemoryManager.
-           */
-          const combinedScore =
-            semanticConfidence *
-              0.65 +
-            importanceScore *
-              0.10 +
-            freshnessScore *
-              0.10 +
-            confidenceScore *
-              0.10 +
-            sourceReliabilityScore *
-              0.05;
+        /*
+         * Semantic relevance remains the
+         * dominant retrieval signal.
+         *
+         * Confidence and source reliability
+         * can improve ordering between
+         * otherwise relevant memories, but
+         * cannot bypass the semantic gates
+         * applied later by MemoryManager.
+         */
+        const combinedScore =
+          semanticConfidence * 0.65 +
+          importanceScore * 0.1 +
+          freshnessScore * 0.1 +
+          confidenceScore * 0.1 +
+          sourceReliabilityScore * 0.05;
 
-          return {
-            memory,
+        return {
+          memory,
 
-            score,
+          score,
 
-            combinedScore,
+          combinedScore,
 
-            semanticConfidence,
+          semanticConfidence,
 
-            importanceScore,
+          importanceScore,
 
-            freshnessScore,
+          freshnessScore,
 
-            confidenceScore,
+          confidenceScore,
 
-            sourceReliabilityScore,
-          };
-        },
-      )
-      .filter(
-        (result) =>
-          result.score >=
-          threshold,
-      )
-      .sort(
-        (a, b) =>
-          b.combinedScore -
-          a.combinedScore,
-      );
+          sourceReliabilityScore,
+        };
+      })
+      .filter((result) => result.score >= threshold)
+      .sort((a, b) => b.combinedScore - a.combinedScore);
   }
 
-  findHistory(
-    id: string,
-  ): Memory[] {
-    const history:
-      Memory[] = [];
+  findHistory(id: string): Memory[] {
+    const history: Memory[] = [];
 
-    const visited =
-      new Set<string>();
+    const visited = new Set<string>();
 
-    let current =
-      this.memories.find(
-        (memory) =>
-          memory.id === id,
-      );
+    let current = this.memories.find((memory) => memory.id === id);
 
     while (current) {
-      if (
-        visited.has(
-          current.id,
-        )
-      ) {
+      if (visited.has(current.id)) {
         break;
       }
 
-      visited.add(
-        current.id,
-      );
+      visited.add(current.id);
 
-      history.push(
-        current,
-      );
+      history.push(current);
 
-      if (
-        !current.supersedesId
-      ) {
+      if (!current.supersedesId) {
         break;
       }
 
-      const supersedesId =
-        current.supersedesId;
+      const supersedesId = current.supersedesId;
 
-      current =
-        this.memories.find(
-          (memory) =>
-            memory.id ===
-            supersedesId,
-        );
+      current = this.memories.find((memory) => memory.id === supersedesId);
     }
 
     return history;
   }
 
-  findTopicHistory(
-    topic: string,
-  ): Memory[] {
+  findTopicHistory(topic: string): Memory[] {
     return this.memories
-      .filter(
-        (memory) =>
-          memory.topic ===
-          topic,
-      )
+      .filter((memory) => memory.topic === topic)
       .sort(
         (a, b) =>
-          this.getTimestamp(
-            b.createdAt,
-          ) -
-          this.getTimestamp(
-            a.createdAt,
-          ),
+          this.getTimestamp(b.createdAt) - this.getTimestamp(a.createdAt),
       );
   }
 
-  findTopicTimeline(
-    topic: string,
-  ): Memory[] {
-    const topicMemories =
-      this.memories.filter(
-        (memory) =>
-          memory.topic ===
-          topic,
-      );
+  findTopicTimeline(topic: string): Memory[] {
+    const topicMemories = this.memories.filter(
+      (memory) => memory.topic === topic,
+    );
 
-    if (
-      topicMemories.length ===
-      0
-    ) {
+    if (topicMemories.length === 0) {
       return [];
     }
 
-    const supersededIds =
-      new Set(
-        topicMemories
-          .map(
-            (memory) =>
-              memory.supersedesId,
-          )
-          .filter(
-            (
-              id,
-            ): id is string =>
-              typeof id ===
-              "string",
-          ),
+    const supersededIds = new Set(
+      topicMemories
+        .map((memory) => memory.supersedesId)
+        .filter((id): id is string => typeof id === "string"),
+    );
+
+    const heads = topicMemories.filter(
+      (memory) => !supersededIds.has(memory.id),
+    );
+
+    const canonicalHead = [...heads].sort((a, b) => {
+      if (a.lifecycle !== b.lifecycle) {
+        return a.lifecycle === "active" ? -1 : 1;
+      }
+
+      return (
+        this.getTimestamp(b.lastConfirmedAt) -
+        this.getTimestamp(a.lastConfirmedAt)
       );
-
-    const heads =
-      topicMemories.filter(
-        (memory) =>
-          !supersededIds.has(
-            memory.id,
-          ),
-      );
-
-    const canonicalHead =
-      [...heads].sort(
-        (a, b) => {
-          if (
-            a.lifecycle !==
-            b.lifecycle
-          ) {
-            return (
-              a.lifecycle ===
-              "active"
-                ? -1
-                : 1
-            );
-          }
-
-          return (
-            this.getTimestamp(
-              b.lastConfirmedAt,
-            ) -
-            this.getTimestamp(
-              a.lastConfirmedAt,
-            )
-          );
-        },
-      )[0];
+    })[0];
 
     if (!canonicalHead) {
-      return [
-        ...topicMemories,
-      ].sort(
+      return [...topicMemories].sort(
         (a, b) =>
-          this.getTimestamp(
-            a.createdAt,
-          ) -
-          this.getTimestamp(
-            b.createdAt,
-          ),
+          this.getTimestamp(a.createdAt) - this.getTimestamp(b.createdAt),
       );
     }
 
-    const canonicalTimeline =
-      this.findHistory(
-        canonicalHead.id,
-      )
-        .filter(
-          (memory) =>
-            memory.topic ===
-            topic,
-        )
-        .reverse();
+    const canonicalTimeline = this.findHistory(canonicalHead.id)
+      .filter((memory) => memory.topic === topic)
+      .reverse();
 
-    const canonicalIds =
-      new Set(
-        canonicalTimeline.map(
-          (memory) =>
-            memory.id,
-        ),
-      );
+    const canonicalIds = new Set(canonicalTimeline.map((memory) => memory.id));
 
-    const orphanMemories =
-      topicMemories.filter(
-        (memory) =>
-          !canonicalIds.has(
-            memory.id,
-          ),
-      );
+    const orphanMemories = topicMemories.filter(
+      (memory) => !canonicalIds.has(memory.id),
+    );
 
-    const recoverableOrphans =
-      orphanMemories.filter(
-        (orphan) =>
-          this.isRecoverableTimelineMemory(
-            orphan,
-            canonicalTimeline,
-          ),
-      );
+    const recoverableOrphans = orphanMemories.filter((orphan) =>
+      this.isRecoverableTimelineMemory(orphan, canonicalTimeline),
+    );
 
-    if (
-      recoverableOrphans.length ===
-      0
-    ) {
+    if (recoverableOrphans.length === 0) {
       return canonicalTimeline;
     }
 
-    const reconstructed = [
-      ...canonicalTimeline,
-      ...recoverableOrphans,
-    ];
+    const reconstructed = [...canonicalTimeline, ...recoverableOrphans];
 
-    const uniqueById =
-      new Map<
-        string,
-        Memory
-      >();
+    const uniqueById = new Map<string, Memory>();
 
-    for (
-      const memory of
-        reconstructed
-    ) {
-      uniqueById.set(
-        memory.id,
-        memory,
-      );
+    for (const memory of reconstructed) {
+      uniqueById.set(memory.id, memory);
     }
 
-    return [
-      ...uniqueById.values(),
-    ].sort(
-      (a, b) => {
-        const createdDifference =
-          this.getTimestamp(
-            a.createdAt,
-          ) -
-          this.getTimestamp(
-            b.createdAt,
-          );
+    return [...uniqueById.values()].sort((a, b) => {
+      const createdDifference =
+        this.getTimestamp(a.createdAt) - this.getTimestamp(b.createdAt);
 
-        if (
-          createdDifference !==
-          0
-        ) {
-          return createdDifference;
-        }
+      if (createdDifference !== 0) {
+        return createdDifference;
+      }
 
-        return (
-          this.getTimestamp(
-            a.lastConfirmedAt,
-          ) -
-          this.getTimestamp(
-            b.lastConfirmedAt,
-          )
-        );
-      },
-    );
+      return (
+        this.getTimestamp(a.lastConfirmedAt) -
+        this.getTimestamp(b.lastConfirmedAt)
+      );
+    });
   }
 
   private isRecoverableTimelineMemory(
     candidate: Memory,
-    canonicalTimeline:
-      Memory[],
+    canonicalTimeline: Memory[],
   ): boolean {
-    if (
-      candidate.lifecycle !==
-      "stale"
-    ) {
+    if (candidate.lifecycle !== "stale") {
       return false;
     }
 
-    if (
-      candidate.embedding.length ===
-      0
-    ) {
+    if (candidate.embedding.length === 0) {
       return false;
     }
 
-    let bestSimilarity =
-      0;
+    let bestSimilarity = 0;
 
-    for (
-      const canonical of
-        canonicalTimeline
-    ) {
+    for (const canonical of canonicalTimeline) {
       const exactDuplicate =
-        this.normalise(
-          candidate.content,
-        ) ===
-        this.normalise(
-          canonical.content,
-        );
+        this.normalise(candidate.content) === this.normalise(canonical.content);
 
       if (exactDuplicate) {
         return false;
       }
 
-      if (
-        canonical.embedding.length ===
-        0
-      ) {
+      if (canonical.embedding.length === 0) {
         continue;
       }
 
-      const similarity =
-        this.cosineSimilarity(
-          candidate.embedding,
-          canonical.embedding,
-        );
-
-      bestSimilarity =
-        Math.max(
-          bestSimilarity,
-          similarity,
-        );
-    }
-
-    return (
-      bestSimilarity >=
-      0.75
-    );
-  }
-
-  delete(
-    id: string,
-  ): boolean {
-    const originalLength =
-      this.memories.length;
-
-    this.memories =
-      this.memories.filter(
-        (memory) =>
-          memory.id !== id,
+      const similarity = this.cosineSimilarity(
+        candidate.embedding,
+        canonical.embedding,
       );
 
-    const deleted =
-      this.memories.length !==
-      originalLength;
+      bestSimilarity = Math.max(bestSimilarity, similarity);
+    }
+
+    return bestSimilarity >= 0.75;
+  }
+
+  delete(id: string): boolean {
+    const originalLength = this.memories.length;
+
+    this.memories = this.memories.filter((memory) => memory.id !== id);
+
+    const deleted = this.memories.length !== originalLength;
 
     if (deleted) {
       this.save();
@@ -825,9 +491,7 @@ export class LongTermMemory {
   }
 
   getAll(): Memory[] {
-    return [
-      ...this.memories,
-    ];
+    return [...this.memories];
   }
 
   clear(): void {
@@ -837,20 +501,9 @@ export class LongTermMemory {
   }
 
   rescore(): void {
-    for (
-      const memory of
-        this.memories
-    ) {
-      if (
-        memory.lifecycle ===
-        "stale"
-      ) {
-        memory.importance =
-          Math.max(
-            1,
-            memory.importance -
-              1,
-          );
+    for (const memory of this.memories) {
+      if (memory.lifecycle === "stale") {
+        memory.importance = Math.max(1, memory.importance - 1);
       }
     }
 
@@ -858,95 +511,50 @@ export class LongTermMemory {
   }
 
   consolidate(): void {
-    const activeByTopic =
-      new Map<
-        string,
-        Memory[]
-      >();
+    const activeByTopic = new Map<string, Memory[]>();
 
-    for (
-      const memory of
-        this.memories
-    ) {
-      if (
-        memory.lifecycle !==
-        "active"
-      ) {
+    for (const memory of this.memories) {
+      if (memory.lifecycle !== "active") {
         continue;
       }
 
-      const existing =
-        activeByTopic.get(
-          memory.topic,
-        ) ?? [];
+      const existing = activeByTopic.get(memory.topic) ?? [];
 
-      existing.push(
-        memory,
-      );
+      existing.push(memory);
 
-      activeByTopic.set(
-        memory.topic,
-        existing,
-      );
+      activeByTopic.set(memory.topic, existing);
     }
 
-    for (
-      const memories of
-        activeByTopic.values()
-    ) {
-      if (
-        memories.length <=
-        1
-      ) {
+    for (const memories of activeByTopic.values()) {
+      if (memories.length <= 1) {
         continue;
       }
 
-      const sorted =
-        [...memories].sort(
-          (a, b) =>
-            this.getTimestamp(
-              b.lastConfirmedAt,
-            ) -
-            this.getTimestamp(
-              a.lastConfirmedAt,
-            ),
-        );
+      const sorted = [...memories].sort(
+        (a, b) =>
+          this.getTimestamp(b.lastConfirmedAt) -
+          this.getTimestamp(a.lastConfirmedAt),
+      );
 
-      const latest =
-        sorted[0];
+      const latest = sorted[0];
 
       if (!latest) {
         continue;
       }
 
-      for (
-        const memory of
-          sorted.slice(1)
-      ) {
+      for (const memory of sorted.slice(1)) {
         const exactDuplicate =
-          this.normalise(
-            memory.content,
-          ) ===
-          this.normalise(
-            latest.content,
-          );
+          this.normalise(memory.content) === this.normalise(latest.content);
 
-        const semanticSimilarity =
-          this.cosineSimilarity(
-            memory.embedding,
-            latest.embedding,
-          );
+        const semanticSimilarity = this.cosineSimilarity(
+          memory.embedding,
+          latest.embedding,
+        );
 
-        const semanticDuplicate =
-          semanticSimilarity >=
-          0.85;
+        const semanticDuplicate = semanticSimilarity >= 0.85;
 
-        if (
-          exactDuplicate ||
-          semanticDuplicate
-        ) {
-          memory.lifecycle =
-            "stale";
+        if (exactDuplicate || semanticDuplicate) {
+          memory.lifecycle = "stale";
         }
       }
     }
@@ -954,64 +562,27 @@ export class LongTermMemory {
     this.save();
   }
 
-  private getFreshnessScore(
-    memory: Memory,
-    now: Date,
-  ): number {
-    const confirmedAt =
-      new Date(
-        memory.lastConfirmedAt,
-      );
+  private getFreshnessScore(memory: Memory, now: Date): number {
+    const confirmedAt = new Date(memory.lastConfirmedAt);
 
-    const ageMs =
-      now.getTime() -
-      confirmedAt.getTime();
+    const ageMs = now.getTime() - confirmedAt.getTime();
 
-    const ageDays =
-      Math.max(
-        0,
-        ageMs /
-          (
-            1000 *
-            60 *
-            60 *
-            24
-          ),
-      );
+    const ageDays = Math.max(0, ageMs / (1000 * 60 * 60 * 24));
 
-    switch (
-      memory.freshness
-    ) {
+    switch (memory.freshness) {
       case "temporary":
-        return Math.max(
-          0,
-          1 -
-            ageDays /
-              30,
-        );
+        return Math.max(0, 1 - ageDays / 30);
 
       case "dynamic":
-        return Math.max(
-          0,
-          1 -
-            ageDays /
-              90,
-        );
+        return Math.max(0, 1 - ageDays / 90);
 
       case "stable":
       default:
-        return Math.max(
-          0,
-          1 -
-            ageDays /
-              365,
-        );
+        return Math.max(0, 1 - ageDays / 365);
     }
   }
 
-  private getSourceReliabilityScore(
-    source: MemorySource,
-  ): number {
+  private getSourceReliabilityScore(source: MemorySource): number {
     switch (source) {
       case "explicit":
         return 1;
@@ -1020,45 +591,23 @@ export class LongTermMemory {
         return 1;
 
       case "inferred":
-        return 0.70;
+        return 0.7;
 
       default:
-        return 0.70;
+        return 0.7;
     }
   }
 
-  private clampImportance(
-    importance: number,
-  ): number {
-    return Math.min(
-      5,
-      Math.max(
-        1,
-        importance,
-      ),
-    );
+  private clampImportance(importance: number): number {
+    return Math.min(5, Math.max(1, importance));
   }
 
-  private clampConfidence(
-    confidence: number,
-  ): number {
-    return Math.min(
-      1,
-      Math.max(
-        0,
-        confidence,
-      ),
-    );
+  private clampConfidence(confidence: number): number {
+    return Math.min(1, Math.max(0, confidence));
   }
 
-  private cosineSimilarity(
-    a: number[],
-    b: number[],
-  ): number {
-    if (
-      a.length !==
-      b.length
-    ) {
+  private cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length !== b.length) {
       return 0;
     }
 
@@ -1068,264 +617,125 @@ export class LongTermMemory {
 
     let magnitudeB = 0;
 
-    for (
-      let i = 0;
-      i < a.length;
-      i++
-    ) {
-      const valueA =
-        a[i];
+    for (let i = 0; i < a.length; i++) {
+      const valueA = a[i];
 
-      const valueB =
-        b[i];
+      const valueB = b[i];
 
-      if (
-        valueA ===
-          undefined ||
-        valueB ===
-          undefined
-      ) {
+      if (valueA === undefined || valueB === undefined) {
         continue;
       }
 
-      dot +=
-        valueA *
-        valueB;
+      dot += valueA * valueB;
 
-      magnitudeA +=
-        valueA *
-        valueA;
+      magnitudeA += valueA * valueA;
 
-      magnitudeB +=
-        valueB *
-        valueB;
+      magnitudeB += valueB * valueB;
     }
 
-    if (
-      magnitudeA === 0 ||
-      magnitudeB === 0
-    ) {
+    if (magnitudeA === 0 || magnitudeB === 0) {
       return 0;
     }
 
-    return (
-      dot /
-      (
-        Math.sqrt(
-          magnitudeA,
-        ) *
-        Math.sqrt(
-          magnitudeB,
-        )
-      )
-    );
+    return dot / (Math.sqrt(magnitudeA) * Math.sqrt(magnitudeB));
   }
 
-  private getTimestamp(
-    value: string,
-  ): number {
-    const timestamp =
-      new Date(
-        value,
-      ).getTime();
+  private getTimestamp(value: string): number {
+    const timestamp = new Date(value).getTime();
 
-    return Number.isFinite(
-      timestamp,
-    )
-      ? timestamp
-      : 0;
+    return Number.isFinite(timestamp) ? timestamp : 0;
   }
 
-  private normalise(
-    text: string,
-  ): string {
-    return text
-      .trim()
-      .toLowerCase()
-      .replace(
-        /\s+/g,
-        " ",
-      );
+  private normalise(text: string): string {
+    return text.trim().toLowerCase().replace(/\s+/g, " ");
   }
 
   private load(): void {
-    if (
-      !fs.existsSync(
-        this.filePath,
-      )
-    ) {
+    if (!fs.existsSync(this.filePath)) {
       this.memories = [];
 
       return;
     }
 
     try {
-      const raw =
-        fs.readFileSync(
-          this.filePath,
-          "utf-8",
-        );
+      const raw = fs.readFileSync(this.filePath, "utf-8");
 
-      const parsed =
-        JSON.parse(
-          raw,
-        );
+      const parsed = JSON.parse(raw);
 
-      if (
-        !Array.isArray(
-          parsed,
-        )
-      ) {
+      if (!Array.isArray(parsed)) {
         this.memories = [];
 
         return;
       }
 
-      const now =
-        new Date()
-          .toISOString();
+      const now = new Date().toISOString();
 
-      this.memories =
-        parsed
-          .filter(
-            (
-              memory:
-                unknown,
-            ): memory is
-              Record<
-                string,
-                unknown
-              > =>
-              Boolean(
-                memory &&
-                typeof memory ===
-                  "object",
-              ),
-          )
-          .map(
-            (
-              memory:
-                Record<
-                  string,
-                  unknown
-                >,
-            ): Memory => {
-              const createdAt =
-                typeof memory.createdAt ===
-                "string"
-                  ? memory.createdAt
-                  : now;
+      this.memories = parsed
+        .filter((memory: unknown): memory is Record<string, unknown> =>
+          Boolean(memory && typeof memory === "object"),
+        )
+        .map((memory: Record<string, unknown>): Memory => {
+          const createdAt =
+            typeof memory.createdAt === "string" ? memory.createdAt : now;
 
-              const source:
-                MemorySource =
-                memory.source ===
-                  "inferred" ||
-                memory.source ===
-                  "updated"
-                  ? memory.source
-                  : "explicit";
+          const source: MemorySource =
+            memory.source === "inferred" || memory.source === "updated"
+              ? memory.source
+              : "explicit";
 
-              const confidence =
-                typeof memory.confidence ===
-                "number"
-                  ? this.clampConfidence(
-                      memory.confidence,
-                    )
-                  : source ===
-                      "inferred"
-                    ? 0.70
-                    : 1;
+          const confidence =
+            typeof memory.confidence === "number"
+              ? this.clampConfidence(memory.confidence)
+              : source === "inferred"
+                ? 0.7
+                : 1;
 
-              return {
-                id:
-                  typeof memory.id ===
-                  "string"
-                    ? memory.id
-                    : randomUUID(),
+          return {
+            id: typeof memory.id === "string" ? memory.id : randomUUID(),
 
-                topic:
-                  typeof memory.topic ===
-                  "string"
-                    ? memory.topic
-                    : "",
+            topic: typeof memory.topic === "string" ? memory.topic : "",
 
-                content:
-                  typeof memory.content ===
-                  "string"
-                    ? memory.content
-                    : "",
+            content: typeof memory.content === "string" ? memory.content : "",
 
-                createdAt,
+            createdAt,
 
-                lastConfirmedAt:
-                  typeof memory.lastConfirmedAt ===
-                  "string"
-                    ? memory.lastConfirmedAt
-                    : createdAt,
+            lastConfirmedAt:
+              typeof memory.lastConfirmedAt === "string"
+                ? memory.lastConfirmedAt
+                : createdAt,
 
-                importance:
-                  typeof memory.importance ===
-                  "number"
-                    ? this.clampImportance(
-                        memory.importance,
-                      )
-                    : 3,
+            importance:
+              typeof memory.importance === "number"
+                ? this.clampImportance(memory.importance)
+                : 3,
 
-                confidence,
+            confidence,
 
-                embedding:
-                  Array.isArray(
-                    memory.embedding,
-                  )
-                    ? memory.embedding.filter(
-                        (
-                          value,
-                        ): value is number =>
-                          typeof value ===
-                            "number",
-                      )
-                    : [],
+            embedding: Array.isArray(memory.embedding)
+              ? memory.embedding.filter(
+                  (value): value is number => typeof value === "number",
+                )
+              : [],
 
-                source,
+            source,
 
-                lifecycle:
-                  memory.lifecycle ===
-                  "stale"
-                    ? "stale"
-                    : "active",
+            lifecycle: memory.lifecycle === "stale" ? "stale" : "active",
 
-                freshness:
-                  memory.freshness ===
-                    "temporary" ||
-                  memory.freshness ===
-                    "dynamic"
-                    ? memory.freshness
-                    : "stable",
+            freshness:
+              memory.freshness === "temporary" || memory.freshness === "dynamic"
+                ? memory.freshness
+                : "stable",
 
-                ...(typeof memory.supersedesId ===
-                  "string"
-                  ? {
-                      supersedesId:
-                        memory.supersedesId,
-                    }
-                  : {}),
-              };
-            },
-          )
-          .filter(
-            (memory) =>
-              Boolean(
-                memory.topic,
-              ) &&
-              Boolean(
-                memory.content,
-              ),
-          );
+            ...(typeof memory.supersedesId === "string"
+              ? {
+                  supersedesId: memory.supersedesId,
+                }
+              : {}),
+          };
+        })
+        .filter((memory) => Boolean(memory.topic) && Boolean(memory.content));
     } catch (error) {
-      console.error(
-        "[LongTermMemory] Failed to load memory file:",
-        error,
-      );
+      console.error("[LongTermMemory] Failed to load memory file:", error);
 
       this.memories = [];
     }
@@ -1335,18 +745,11 @@ export class LongTermMemory {
     try {
       fs.writeFileSync(
         this.filePath,
-        JSON.stringify(
-          this.memories,
-          null,
-          2,
-        ),
+        JSON.stringify(this.memories, null, 2),
         "utf-8",
       );
     } catch (error) {
-      console.error(
-        "[LongTermMemory] Failed to save memory file:",
-        error,
-      );
+      console.error("[LongTermMemory] Failed to save memory file:", error);
     }
   }
 }

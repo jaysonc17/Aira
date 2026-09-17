@@ -1,46 +1,53 @@
+import { generateAnswer } from "./answer-generator.js";
 import { Router } from "./router.js";
 
-import {
-  ModelRegistry,
-} from "./models/model-registry.js";
+import { ModelRegistry } from "./models/model-registry.js";
 
-import {
-  ConversationMemory,
-} from "./conversation-memory.js";
+import { ConversationMemory } from "./conversation-memory.js";
 
-import {
-  LlmConversationSummarizer,
-} from "./llm-conversation-summarizer.js";
+import { LlmConversationSummarizer } from "./llm-conversation-summarizer.js";
 
-import {
-  LongTermMemory,
-} from "./long-term-memory.js";
+import { LongTermMemory } from "./long-term-memory.js";
 
-import {
-  EmbeddingService,
-} from "./embedding-service.js";
+import { EmbeddingService } from "./embedding-service.js";
 
-import {
-  MemoryReranker,
-} from "./memory-reranker.js";
+import { MemoryReranker } from "./memory-reranker.js";
 
-import {
-  MemoryManager,
-} from "./memory-manager.js";
+import { MemoryManager } from "./memory-manager.js";
 
-import {
-  LlmEvaluator,
-} from "./llm-evaluator.js";
+import { LlmEvaluator } from "./llm-evaluator.js";
 
-import {
-  MemoryContextBuilder,
-} from "./memory-context-builder.js";
+import { MemoryContextBuilder } from "./memory-context-builder.js";
 
 import readline from "node:readline";
 
+import { ToolRegistry } from "./tools/tool-registry.js";
+import { inspectTools } from "./tools/tool-inspection.js";
+import { ToolSelector } from "./tools/tool-selector.js";
+import { ToolRunner } from "./tools/tool-runner.js";
+import { ToolLoop } from "./tools/tool-loop.js";
+import { CurrentTimeTool } from "./tools/current-time-tool.js";
+import { loadMcpConfig } from "./tools/mcp-config.js";
+import { McpSession } from "./tools/mcp-session.js";
+import { requestToolApproval } from "./tools/tool-approval.js";
+
 async function main() {
-  const modelRegistry =
-    new ModelRegistry();
+  const modelRegistry = new ModelRegistry();
+
+  const toolRegistry = new ToolRegistry();
+  toolRegistry.register(new CurrentTimeTool());
+
+  const toolRunner = new ToolLoop(
+    new ToolRunner(
+      new ToolSelector(modelRegistry.get("fast"), toolRegistry),
+      toolRegistry,
+      undefined,
+      (request, signal) =>
+        process.stdin.isTTY
+          ? requestToolApproval(rl, request, signal)
+          : Promise.resolve(false),
+    ),
+  );
 
   /*
    * Conversation summarization uses the
@@ -48,10 +55,9 @@ async function main() {
    *
    * This is currently Qwen3-14B.
    */
-  const conversationSummarizer =
-    new LlmConversationSummarizer(
-      modelRegistry.get("memory"),
-    );
+  const conversationSummarizer = new LlmConversationSummarizer(
+    modelRegistry.get("memory"),
+  );
 
   // const conversationMemory =
   //   new ConversationMemory({
@@ -62,130 +68,116 @@ async function main() {
   //   });
 
   // for testing, we use a smaller conversation memory to trigger summarization more quickly
-  const conversationMemory =
-    new ConversationMemory({
-      maximumMessages: 4,
-      maximumCharacters: 2000,
-      summarizer:
-        conversationSummarizer,
-    });
+  const conversationMemory = new ConversationMemory({
+    maximumMessages: 4,
+    maximumCharacters: 2000,
+    summarizer: conversationSummarizer,
+  });
 
-  const longTermMemory =
-    new LongTermMemory();
+  const longTermMemory = new LongTermMemory();
 
-  const embeddingService =
-    new EmbeddingService();
+  const embeddingService = new EmbeddingService();
 
-  const memoryReranker =
-    new MemoryReranker(
-      modelRegistry.get("memory"),
+  const memoryReranker = new MemoryReranker(modelRegistry.get("memory"));
+
+  const memoryManager = new MemoryManager(
+    longTermMemory,
+    embeddingService,
+    modelRegistry.get("fast"),
+    memoryReranker,
+    modelRegistry.get("memory"),
+  );
+
+  const memoryContextBuilder = new MemoryContextBuilder();
+
+  const router = new Router(modelRegistry.get("fast"));
+
+  const evaluator = new LlmEvaluator(modelRegistry.get("reasoning"));
+
+  const mcpSession = new McpSession();
+  await mcpSession.start(await loadMcpConfig(), toolRegistry);
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+    prompt: "\nYou: ",
+  });
+
+  console.log("Personal AI assistant started.");
+
+  console.log("Type /memories to inspect long-term memory.");
+
+  console.log("Type /memory search <query> to search memory.");
+
+  console.log("Type /memory consolidate to consolidate memory.");
+
+  console.log("Type /memory rescore to rescore memory.");
+
+  console.log("Type /memory delete <id> to delete a memory.");
+
+  console.log("Type /memory clear to clear long-term memory.");
+
+  console.log("Type /tools to list available tools.");
+
+  console.log("Type /exit to quit.");
+
+  const cancellation = new AbortController();
+  const shutdown = () => {
+    cancellation.abort();
+    rl.close();
+    void mcpSession.close().then(
+      () => process.exit(0),
+      (error) => {
+        console.error("MCP shutdown failed:", error);
+        process.exit(1);
+      },
     );
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+  rl.once("SIGINT", shutdown);
 
-  const memoryManager =
-    new MemoryManager(
-      longTermMemory,
-      embeddingService,
-      modelRegistry.get("fast"),
-      memoryReranker,
-      modelRegistry.get("memory"),
-    );
-
-  const memoryContextBuilder =
-    new MemoryContextBuilder();
-
-  const router =
-    new Router(
-      modelRegistry.get("fast"),
-    );
-
-  const evaluator =
-    new LlmEvaluator(
-      modelRegistry.get("reasoning"),
-    );
-
-  const rl =
-    readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      prompt: "\nYou: ",
-    });
-
-  console.log(
-    "Personal AI assistant started.",
-  );
-
-  console.log(
-    "Type /memories to inspect long-term memory.",
-  );
-
-  console.log(
-    "Type /memory search <query> to search memory.",
-  );
-
-  console.log(
-    "Type /memory consolidate to consolidate memory.",
-  );
-
-  console.log(
-    "Type /memory rescore to rescore memory.",
-  );
-
-  console.log(
-    "Type /memory delete <id> to delete a memory.",
-  );
-
-  console.log(
-    "Type /memory clear to clear long-term memory.",
-  );
-
-  console.log(
-    "Type /exit to quit.",
-  );
-
-  rl.prompt();
-
-  rl.on(
-    "line",
-    async (line) => {
-      const prompt =
-        line.trim();
-
+  try {
+    rl.prompt();
+    // Process one turn at a time so tool calls and memory updates cannot overlap.
+    for await (const line of rl) {
+      const prompt = line.trim();
+      if (prompt === "/exit") break;
       if (!prompt) {
         rl.prompt();
-        return;
+        continue;
       }
 
       try {
-        if (
-          await handleCommand(
-            prompt,
-            longTermMemory,
-            memoryManager,
-          )
+        const toolInspection = inspectTools(prompt, toolRegistry);
+        if (toolInspection !== null) {
+          console.log(toolInspection);
+        } else if (
+          !(await handleCommand(prompt, longTermMemory, memoryManager))
         ) {
-          rl.prompt();
-          return;
+          await handleConversation(
+            prompt,
+            router,
+            evaluator,
+            modelRegistry,
+            conversationMemory,
+            memoryManager,
+            memoryContextBuilder,
+            toolRunner,
+            cancellation.signal,
+          );
         }
-
-        await handleConversation(
-          prompt,
-          router,
-          evaluator,
-          modelRegistry,
-          conversationMemory,
-          memoryManager,
-          memoryContextBuilder,
-        );
       } catch (error) {
-        console.error(
-          "\nError:",
-          error,
-        );
+        console.error("\nError:", error);
       }
-
       rl.prompt();
-    },
-  );
+    }
+  } finally {
+    rl.close();
+    process.off("SIGINT", shutdown);
+    process.off("SIGTERM", shutdown);
+    await mcpSession.close();
+  }
 }
 
 async function handleConversation(
@@ -196,6 +188,8 @@ async function handleConversation(
   conversationMemory: ConversationMemory,
   memoryManager: MemoryManager,
   memoryContextBuilder: MemoryContextBuilder,
+  toolRunner: ToolLoop,
+  signal: AbortSignal,
 ) {
   /*
    * Capture conversation state BEFORE
@@ -204,112 +198,85 @@ async function handleConversation(
    * LocalModel.generate() adds the current
    * prompt itself.
    */
-  const history =
-    conversationMemory.getHistory();
+  const history = conversationMemory.getHistory();
 
-  const conversationSummary =
-    conversationMemory
-      .getSummaryContent();
+  const conversationSummary = conversationMemory.getSummaryContent();
 
   console.log(
     `[Conversation memory] ` +
-    `history=${history.length} ` +
-    `stored=${conversationMemory.size} ` +
-    `summarized=${conversationMemory.summarizedMessageCount} ` +
-    `summaryChars=${conversationSummary.length} ` +
-    `recentChars=${conversationMemory.characterCount}`,
+      `history=${history.length} ` +
+      `stored=${conversationMemory.size} ` +
+      `summarized=${conversationMemory.summarizedMessageCount} ` +
+      `summaryChars=${conversationSummary.length} ` +
+      `recentChars=${conversationMemory.characterCount}`,
   );
 
-  if (
-    conversationSummary
-  ) {
-    console.log(
-      `[Conversation summary]\n` +
-      `${conversationSummary}`,
-    );
+  if (conversationSummary) {
+    console.log(`[Conversation summary]\n` + `${conversationSummary}`);
   }
 
   /*
    * Search persistent long-term memory
    * independently from conversation memory.
    */
-  const memorySearch =
-    await memoryManager.search(
-      prompt,
-    );
+  const memorySearch = await memoryManager.search(prompt);
 
-  const diagnostics =
-    memorySearch.diagnostics;
+  const diagnostics = memorySearch.diagnostics;
 
   console.log(
     `[Memory diagnostics] ` +
-    `candidates=${diagnostics.candidateCount} ` +
-    `active=${diagnostics.activeCandidateCount} ` +
-    `historical=${diagnostics.historicalCandidateCount} ` +
-    `reranked=${diagnostics.rerankedCount} ` +
-    `relevant=${diagnostics.relevantCount}`,
+      `candidates=${diagnostics.candidateCount} ` +
+      `active=${diagnostics.activeCandidateCount} ` +
+      `historical=${diagnostics.historicalCandidateCount} ` +
+      `reranked=${diagnostics.rerankedCount} ` +
+      `relevant=${diagnostics.relevantCount}`,
   );
 
-  const relevantMemories =
-    memorySearch.memories;
+  const relevantMemories = memorySearch.memories;
 
-  for (
-    const result of
-    relevantMemories
-  ) {
+  for (const result of relevantMemories) {
     console.log(
       `[Memory result] ` +
-      `rank=${result.rank} ` +
-      `topic=${result.memory.topic} ` +
-      `semantic=${result.semanticConfidence.toFixed(3)} ` +
-      `importance=${result.importanceScore.toFixed(2)} ` +
-      `freshness=${result.freshnessScore.toFixed(2)} ` +
-      `confidence=${result.confidenceScore.toFixed(2)} ` +
-      `source=${result.sourceReliabilityScore.toFixed(2)} ` +
-      `combined=${result.combinedScore.toFixed(3)} ` +
-      `lifecycle=${result.memory.lifecycle} ` +
-      `content="${result.memory.content}"`,
+        `rank=${result.rank} ` +
+        `topic=${result.memory.topic} ` +
+        `semantic=${result.semanticConfidence.toFixed(3)} ` +
+        `importance=${result.importanceScore.toFixed(2)} ` +
+        `freshness=${result.freshnessScore.toFixed(2)} ` +
+        `confidence=${result.confidenceScore.toFixed(2)} ` +
+        `source=${result.sourceReliabilityScore.toFixed(2)} ` +
+        `combined=${result.combinedScore.toFixed(3)} ` +
+        `lifecycle=${result.memory.lifecycle} ` +
+        `content="${result.memory.content}"`,
     );
   }
 
-  const memoryContextResult =
-    memoryContextBuilder.build(
-      memorySearch,
-    );
+  const memoryContextResult = memoryContextBuilder.build(memorySearch);
 
-  const memoryContext =
-    memoryContextResult.context;
+  const memoryContext = memoryContextResult.context;
 
-  if (
-    memoryContext
-  ) {
+  if (memoryContext) {
     console.log(
       `\n[Memory] Using ` +
-      `${memoryContextResult.selectedCount} ` +
-      `relevant memories`,
+        `${memoryContextResult.selectedCount} ` +
+        `relevant memories`,
     );
 
     console.log(
       `[Memory context] ` +
-      `selected=${memoryContextResult.selectedCount} ` +
-      `dropped=${memoryContextResult.droppedCount} ` +
-      `chars=${memoryContextResult.charactersUsed}/2500`,
+        `selected=${memoryContextResult.selectedCount} ` +
+        `dropped=${memoryContextResult.droppedCount} ` +
+        `chars=${memoryContextResult.charactersUsed}/2500`,
     );
 
-    console.log(
-      `[Memory context]\n${memoryContext}`,
-    );
+    console.log(`[Memory context]\n${memoryContext}`);
   }
 
-  const route =
-    await router.route(
-      prompt,
-    );
+  const route = await router.route(prompt);
 
   console.log(
     `[Router] role=${route.role} ` +
-    `confidence=${route.confidence.toFixed(2)} ` +
-    `reason=${route.reason}`,
+      `confidence=${route.confidence.toFixed(2)} ` +
+      `reason=${route.reason}`,
   );
 
   /*
@@ -317,159 +284,107 @@ async function handleConversation(
    * are escalated to the reasoning model.
    */
   const effectiveRole =
-    route.confidence < 0.75
-      ? "reasoning"
-      : route.role;
+    route.confidence < 0.75 || route.role !== "fast" ? "reasoning" : "fast";
 
-  if (
-    effectiveRole !==
-    route.role
-  ) {
-    console.log(
-      `[Router] Low confidence — escalating to reasoning model`,
-    );
+  if (effectiveRole !== route.role) {
+    console.log(`[Router] Low confidence — escalating to reasoning model`);
   }
 
-  /*
-   * System context contains two distinct
-   * memory layers:
-   *
-   * 1. Rolling session summary
-   * 2. Persistent long-term memory
-   *
-   * Recent conversation remains in the
-   * normal chat history.
-   */
-  const systemPrompt =
-    buildSystemPrompt(
-      conversationSummary,
-      memoryContext,
-    );
+  // Run a bounded tool loop. Reuse all outcomes during
+  // evaluation and escalation so actions are not repeated.
+  const toolRun = await toolRunner.run(
+    prompt,
+    history,
+    buildEvaluationContext(conversationSummary, memoryContext),
+    signal,
+  );
 
-  const model =
-    modelRegistry.get(
-      effectiveRole,
-    );
-
-  let answer =
-    await model.generate({
-      prompt,
-
-      systemPrompt,
-
-      history,
-
-      maxTokens:
-        effectiveRole ===
-          "reasoning"
-          ? 2000
-          : 1500,
-
-      thinking:
-        effectiveRole ===
-        "reasoning",
-    });
-
-  /*
-   * Fast-model answers are evaluated
-   * before being accepted.
-   */
-  if (
-    effectiveRole ===
-    "fast"
-  ) {
-    const evaluation =
-      await evaluator.evaluate(
-        prompt,
-        answer,
-        buildEvaluationContext(
-          conversationSummary,
-          memoryContext,
-        ),
-      );
-
+  const toolContext = toolRun.context;
+  console.log(
+    `[Tool loop] steps=${toolRun.steps.length} stop=${toolRun.stopReason} ` +
+      `contextChars=${toolRun.contextCharacters}/${toolRun.maximumContextCharacters} ` +
+      `omittedSteps=${toolRun.omittedSteps}`,
+  );
+  for (const toolDiagnostics of toolRun.steps) {
     console.log(
-      `[Evaluator] ` +
-      `score=${evaluation.score.toFixed(2)} ` +
-      `action=${evaluation.action} ` +
-      `reason=${evaluation.reason}`,
+      `[Tools] status=${toolDiagnostics.status} ` +
+        `executionAttempted=${toolDiagnostics.executionAttempted} ` +
+        `selectionMs=${toolDiagnostics.selectionMs.toFixed(1)} ` +
+        `executionMs=${toolDiagnostics.executionMs.toFixed(1)} ` +
+        `totalMs=${toolDiagnostics.totalMs.toFixed(1)}`,
     );
 
-    if (
-      evaluation.action ===
-      "escalate"
-    ) {
+    if (toolDiagnostics.selection) {
       console.log(
-        `[Evaluator] Escalating answer to reasoning model`,
+        `[Tool selection] ${JSON.stringify(toolDiagnostics.selection)}`,
       );
+    }
 
-      const reasoningModel =
-        modelRegistry.get(
-          "reasoning",
-        );
-
-      /*
-       * The stronger model receives exactly
-       * the same conversation state that the
-       * original model received.
-       *
-       * The rejected answer is not inserted
-       * into conversation memory.
-       */
-      answer =
-        await reasoningModel.generate(
-          {
-            prompt,
-
-            systemPrompt,
-
-            history,
-
-            maxTokens: 2000,
-
-            thinking: true,
-          },
-        );
+    if (toolDiagnostics.error !== null) {
+      console.log(
+        `[Tool error] stage=${toolDiagnostics.errorStage} ` +
+          `message=${JSON.stringify(toolDiagnostics.error)}`,
+      );
     }
   }
 
-  console.log(
-    `\nAssistant: ${answer}`,
+  const systemPrompt = buildSystemPrompt(
+    conversationSummary,
+    memoryContext,
+    toolContext,
   );
+
+  const answerResult = await generateAnswer(
+    { prompt, systemPrompt, signal, history },
+    effectiveRole,
+    {
+      fast: modelRegistry.get("fast"),
+      reasoning: modelRegistry.get("reasoning"),
+    },
+    evaluator,
+    buildEvaluationContext(conversationSummary, memoryContext, toolContext),
+  );
+  const answer = answerResult.answer;
+  for (const evaluation of answerResult.evaluations) {
+    console.log(
+      `[Evaluator] score=${evaluation.score.toFixed(2)} ` +
+        `action=${evaluation.action} reason=${evaluation.reason}`,
+    );
+  }
+  console.log(
+    `[Answer] role=${answerResult.role} retried=${answerResult.retried}`,
+  );
+
+  console.log(`\nAssistant: ${answer}`);
 
   /*
    * Store only the final displayed turn.
    */
-  conversationMemory.addUserMessage(
-    prompt,
-  );
+  conversationMemory.addUserMessage(prompt);
 
   /*
    * This may trigger rolling
    * summarization if the conversation
    * buffer has exceeded its limits.
    */
-  await conversationMemory
-    .addAssistantMessage(
-      answer,
-    );
+  await conversationMemory.addAssistantMessage(answer);
 
   /*
    * Process persistent long-term memory
    * only after answering.
    */
-  await memoryManager.process(
-    prompt,
-  );
+  await memoryManager.process(prompt);
 }
 
 function buildSystemPrompt(
   conversationSummary: string,
   memoryContext: string,
+  toolContext: string,
 ): string {
   const sections: string[] = [];
 
-  sections.push(`
+  sections.push(
+    `
 You are a personal AI assistant.
 
 Be helpful, accurate, concise,
@@ -479,12 +394,12 @@ when appropriate.
 Do not claim to remember information
 unless it is present in the supplied
 conversation or memory context.
-`.trim());
+`.trim(),
+  );
 
-  if (
-    conversationSummary
-  ) {
-    sections.push(`
+  if (conversationSummary) {
+    sections.push(
+      `
 CONVERSATION SUMMARY:
 
 ${conversationSummary}
@@ -505,13 +420,13 @@ Conversation summary rules:
 - Do not treat session-specific information
   as a permanent user preference merely
   because it appears in this summary.
-`.trim());
+`.trim(),
+    );
   }
 
-  if (
-    memoryContext
-  ) {
-    sections.push(`
+  if (memoryContext) {
+    sections.push(
+      `
 RELEVANT LONG-TERM MEMORY ABOUT THE USER:
 
 ${memoryContext}
@@ -541,46 +456,35 @@ Memory rules:
 
 - Do not force unrelated memories into
   the answer.
-`.trim());
+`.trim(),
+    );
   }
 
-  return sections.join(
-    "\n\n",
-  );
+  sections.push(toolContext);
+
+  return sections.join("\n\n");
 }
 
 function buildEvaluationContext(
   conversationSummary: string,
   memoryContext: string,
+  toolContext = "",
 ): string {
-  const sections:
-    string[] = [];
+  const sections: string[] = [];
 
-  if (
-    conversationSummary
-  ) {
-    sections.push(
-      [
-        "CONVERSATION SUMMARY:",
-        conversationSummary,
-      ].join("\n"),
-    );
+  if (conversationSummary) {
+    sections.push(["CONVERSATION SUMMARY:", conversationSummary].join("\n"));
   }
 
-  if (
-    memoryContext
-  ) {
-    sections.push(
-      [
-        "LONG-TERM MEMORY:",
-        memoryContext,
-      ].join("\n"),
-    );
+  if (memoryContext) {
+    sections.push(["LONG-TERM MEMORY:", memoryContext].join("\n"));
   }
 
-  return sections.join(
-    "\n\n",
-  );
+  if (toolContext) {
+    sections.push(toolContext);
+  }
+
+  return sections.join("\n\n");
 }
 
 async function handleCommand(
@@ -588,241 +492,126 @@ async function handleCommand(
   longTermMemory: LongTermMemory,
   memoryManager: MemoryManager,
 ): Promise<boolean> {
-  if (
-    input === "/exit"
-  ) {
-    process.exit(0);
-  }
+  if (input === "/memories") {
+    const memories = longTermMemory.getAll();
 
-  if (
-    input === "/memories"
-  ) {
-    const memories =
-      longTermMemory.getAll();
+    console.log(`\nLong-term memories (${memories.length}):`);
 
-    console.log(
-      `\nLong-term memories (${memories.length}):`,
-    );
-
-    if (
-      memories.length === 0
-    ) {
-      console.log(
-        "No memories stored.",
-      );
+    if (memories.length === 0) {
+      console.log("No memories stored.");
 
       return true;
     }
 
-    for (
-      const memory of
-      memories
-    ) {
-      console.log(
-        `\nID: ${memory.id}`,
-      );
+    for (const memory of memories) {
+      console.log(`\nID: ${memory.id}`);
 
-      console.log(
-        `Topic: ${memory.topic}`,
-      );
+      console.log(`Topic: ${memory.topic}`);
 
-      console.log(
-        `Memory: ${memory.content}`,
-      );
+      console.log(`Memory: ${memory.content}`);
 
-      console.log(
-        `Importance: ${memory.importance}/5`,
-      );
+      console.log(`Importance: ${memory.importance}/5`);
 
-      console.log(
-        `Confidence: ${memory.confidence.toFixed(2)}`,
-      );
+      console.log(`Confidence: ${memory.confidence.toFixed(2)}`);
 
-      console.log(
-        `Source: ${memory.source}`,
-      );
+      console.log(`Source: ${memory.source}`);
 
-      console.log(
-        `Lifecycle: ${memory.lifecycle}`,
-      );
+      console.log(`Lifecycle: ${memory.lifecycle}`);
 
-      console.log(
-        `Freshness: ${memory.freshness}`,
-      );
+      console.log(`Freshness: ${memory.freshness}`);
 
-      console.log(
-        `Created: ${memory.createdAt}`,
-      );
+      console.log(`Created: ${memory.createdAt}`);
 
-      console.log(
-        `Last confirmed: ${memory.lastConfirmedAt}`,
-      );
+      console.log(`Last confirmed: ${memory.lastConfirmedAt}`);
 
-      if (
-        memory.supersedesId
-      ) {
-        console.log(
-          `Supersedes: ${memory.supersedesId}`,
-        );
+      if (memory.supersedesId) {
+        console.log(`Supersedes: ${memory.supersedesId}`);
       }
     }
 
     return true;
   }
 
-  if (
-    input.startsWith(
-      "/memory search ",
-    )
-  ) {
-    const query =
-      input
-        .slice(
-          "/memory search ".length,
-        )
-        .trim();
+  if (input.startsWith("/memory search ")) {
+    const query = input.slice("/memory search ".length).trim();
 
     if (!query) {
-      console.log(
-        "Usage: /memory search <query>",
-      );
+      console.log("Usage: /memory search <query>");
 
       return true;
     }
 
-    const searchResult =
-      await memoryManager.search(
-        query,
-      );
+    const searchResult = await memoryManager.search(query);
 
-    const results =
-      searchResult.memories;
+    const results = searchResult.memories;
 
-    console.log(
-      `\nMemory search results (${results.length}):`,
-    );
+    console.log(`\nMemory search results (${results.length}):`);
 
-    console.log(
-      `Temporal intent: ${searchResult.temporalIntent}`,
-    );
+    console.log(`Temporal intent: ${searchResult.temporalIntent}`);
 
-    console.log(
-      `Candidates: ${searchResult.diagnostics.candidateCount}`,
-    );
+    console.log(`Candidates: ${searchResult.diagnostics.candidateCount}`);
 
-    for (
-      const result of
-      results
-    ) {
-      console.log(
-        `\nRank: ${result.rank}`,
-      );
+    for (const result of results) {
+      console.log(`\nRank: ${result.rank}`);
 
-      console.log(
-        `Topic: ${result.memory.topic}`,
-      );
+      console.log(`Topic: ${result.memory.topic}`);
 
-      console.log(
-        `Memory: ${result.memory.content}`,
-      );
+      console.log(`Memory: ${result.memory.content}`);
 
-      console.log(
-        `Semantic score: ${result.semanticConfidence.toFixed(3)}`,
-      );
+      console.log(`Semantic score: ${result.semanticConfidence.toFixed(3)}`);
 
-      console.log(
-        `Importance score: ${result.importanceScore.toFixed(3)}`,
-      );
+      console.log(`Importance score: ${result.importanceScore.toFixed(3)}`);
 
-      console.log(
-        `Freshness score: ${result.freshnessScore.toFixed(3)}`,
-      );
+      console.log(`Freshness score: ${result.freshnessScore.toFixed(3)}`);
 
-      console.log(
-        `Confidence score: ${result.confidenceScore.toFixed(3)}`,
-      );
+      console.log(`Confidence score: ${result.confidenceScore.toFixed(3)}`);
 
       console.log(
         `Source reliability: ${result.sourceReliabilityScore.toFixed(3)}`,
       );
 
-      console.log(
-        `Combined score: ${result.combinedScore.toFixed(3)}`,
-      );
+      console.log(`Combined score: ${result.combinedScore.toFixed(3)}`);
     }
 
     return true;
   }
 
-  if (
-    input ===
-    "/memory consolidate"
-  ) {
+  if (input === "/memory consolidate") {
     memoryManager.consolidate();
 
-    console.log(
-      "Memory consolidation complete.",
-    );
+    console.log("Memory consolidation complete.");
 
     return true;
   }
 
-  if (
-    input ===
-    "/memory rescore"
-  ) {
+  if (input === "/memory rescore") {
     memoryManager.rescore();
 
-    console.log(
-      "Memory rescoring complete.",
-    );
+    console.log("Memory rescoring complete.");
 
     return true;
   }
 
-  if (
-    input.startsWith(
-      "/memory delete ",
-    )
-  ) {
-    const id =
-      input
-        .slice(
-          "/memory delete ".length,
-        )
-        .trim();
+  if (input.startsWith("/memory delete ")) {
+    const id = input.slice("/memory delete ".length).trim();
 
     if (!id) {
-      console.log(
-        "Usage: /memory delete <id>",
-      );
+      console.log("Usage: /memory delete <id>");
 
       return true;
     }
 
-    const deleted =
-      longTermMemory.delete(
-        id,
-      );
+    const deleted = longTermMemory.delete(id);
 
-    console.log(
-      deleted
-        ? "Memory deleted."
-        : "Memory not found.",
-    );
+    console.log(deleted ? "Memory deleted." : "Memory not found.");
 
     return true;
   }
 
-  if (
-    input ===
-    "/memory clear"
-  ) {
+  if (input === "/memory clear") {
     longTermMemory.clear();
 
-    console.log(
-      "All long-term memories cleared.",
-    );
+    console.log("All long-term memories cleared.");
 
     return true;
   }
@@ -830,13 +619,8 @@ async function handleCommand(
   return false;
 }
 
-main().catch(
-  (error) => {
-    console.error(
-      "Fatal error:",
-      error,
-    );
+main().catch((error) => {
+  console.error("Fatal error:", error);
 
-    process.exit(1);
-  },
-);
+  process.exit(1);
+});

@@ -1,7 +1,4 @@
-export type EvaluationAction =
-  | "accept"
-  | "retry"
-  | "escalate";
+export type EvaluationAction = "accept" | "retry" | "escalate";
 
 export interface EvaluationResult {
   passed: boolean;
@@ -15,5 +12,6 @@ export interface Evaluator {
     prompt: string,
     answer: string,
     context?: string,
+    signal?: AbortSignal,
   ): Promise<EvaluationResult>;
 }

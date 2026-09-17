@@ -1,0 +1,12 @@
+{
+  "servers": [
+    {
+      "name": "fixture",
+      "requireApproval": false,
+      "command": "node",
+      "args": ["tests/fixtures/mcp-server.mjs"],
+      "tools": ["echo"],
+      "timeoutMs": 5000
+    }
+  ]
+}

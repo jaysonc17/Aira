@@ -1,34 +1,17 @@
-import {
-  LongTermMemory,
-} from "./long-term-memory.js";
+import { LongTermMemory } from "./long-term-memory.js";
 
-import type {
-  Memory,
-  MemorySearchResult,
-} from "./long-term-memory.js";
+import type { Memory, MemorySearchResult } from "./long-term-memory.js";
 
-import {
-  EmbeddingService,
-} from "./embedding-service.js";
+import { EmbeddingService } from "./embedding-service.js";
 
-import {
-  MemoryReranker,
-} from "./memory-reranker.js";
+import { MemoryReranker } from "./memory-reranker.js";
 
-import type {
-  RerankedMemory,
-} from "./memory-reranker.js";
+import type { RerankedMemory } from "./memory-reranker.js";
 
-import type {
-  AIModel,
-} from "./models/local-model.js";
+import type { AIModel } from "./models/local-model.js";
 
 interface MemoryClassification {
-  action:
-  | "create"
-  | "update"
-  | "confirm"
-  | "keep";
+  action: "create" | "update" | "confirm" | "keep";
 
   topic: string;
 
@@ -38,10 +21,7 @@ interface MemoryClassification {
 
   confidence: number;
 
-  source:
-  | "explicit"
-  | "inferred"
-  | "updated";
+  source: "explicit" | "inferred" | "updated";
 }
 
 interface MemoryConflictDecision {
@@ -62,10 +42,7 @@ interface DuplicateDecision {
   similarity: number;
 }
 
-export type TemporalIntent =
-  | "current"
-  | "historical"
-  | "mixed";
+export type TemporalIntent = "current" | "historical" | "mixed";
 
 export interface MemoryTimeline {
   topic: string;
@@ -97,169 +74,113 @@ export interface MemorySearchResponse {
 
 export class MemoryManager {
   constructor(
-    private readonly memory:
-      LongTermMemory,
+    private readonly memory: LongTermMemory,
 
-    private readonly embeddingService:
-      EmbeddingService,
+    private readonly embeddingService: EmbeddingService,
 
-    private readonly classifierModel:
-      AIModel,
+    private readonly classifierModel: AIModel,
 
-    private readonly reranker:
-      MemoryReranker,
+    private readonly reranker: MemoryReranker,
 
-    private readonly memoryModel:
-      AIModel = classifierModel,
-  ) { }
+    private readonly memoryModel: AIModel = classifierModel,
+  ) {}
 
-  async process(
-    userMessage: string,
-  ): Promise<void> {
-    if (
-      !this.shouldInspectMemory(
-        userMessage,
-      )
-    ) {
+  async process(userMessage: string): Promise<void> {
+    if (!this.shouldInspectMemory(userMessage)) {
       return;
     }
 
-    const initialDecision =
-      await this.classifyMessage(
-        userMessage,
-      );
+    const initialDecision = await this.classifyMessage(userMessage);
 
     console.log(
       `[Memory classification] ` +
-      `action=${initialDecision.action} ` +
-      `topic=${initialDecision.topic} ` +
-      `confidence=${initialDecision.confidence.toFixed(2)} ` +
-      `source=${initialDecision.source}`,
+        `action=${initialDecision.action} ` +
+        `topic=${initialDecision.topic} ` +
+        `confidence=${initialDecision.confidence.toFixed(2)} ` +
+        `source=${initialDecision.source}`,
     );
 
     if (
-      initialDecision.action ===
-      "create" &&
-      initialDecision.confidence <
-      0.75
+      initialDecision.action === "create" &&
+      initialDecision.confidence < 0.75
     ) {
       console.log(
         `[Memory skipped: low confidence ` +
-        `${initialDecision.confidence.toFixed(2)}]`,
+          `${initialDecision.confidence.toFixed(2)}]`,
       );
 
       return;
     }
 
-    if (
-      initialDecision.action ===
-      "keep"
-    ) {
+    if (initialDecision.action === "keep") {
       return;
     }
 
-    const existingMemories =
-      initialDecision.topic
-        ? this.memory.findActiveByTopic(
-          initialDecision.topic,
-        )
-        : [];
+    const existingMemories = initialDecision.topic
+      ? this.memory.findActiveByTopic(initialDecision.topic)
+      : [];
 
-    const conflictDecision =
-      await this.analyzeConflict(
-        userMessage,
-        initialDecision,
-        existingMemories,
-      );
+    const conflictDecision = await this.analyzeConflict(
+      userMessage,
+      initialDecision,
+      existingMemories,
+    );
 
     console.log(
       `[Memory conflict] ` +
-      `conflict=${conflictDecision.conflict} ` +
-      `supersedes=${conflictDecision.supersedes} ` +
-      `target=${conflictDecision.targetMemoryId ?? "none"} ` +
-      `confidence=${conflictDecision.confidence.toFixed(2)}`,
+        `conflict=${conflictDecision.conflict} ` +
+        `supersedes=${conflictDecision.supersedes} ` +
+        `target=${conflictDecision.targetMemoryId ?? "none"} ` +
+        `confidence=${conflictDecision.confidence.toFixed(2)}`,
     );
 
-    const targetMemory =
-      conflictDecision.targetMemoryId
-        ? existingMemories.find(
-          (memory) =>
-            memory.id ===
-            conflictDecision.targetMemoryId,
+    const targetMemory = conflictDecision.targetMemoryId
+      ? existingMemories.find(
+          (memory) => memory.id === conflictDecision.targetMemoryId,
         )
-        : undefined;
+      : undefined;
 
-    if (
-      conflictDecision.supersedes &&
-      targetMemory
-    ) {
-      await this.supersedeMemory(
-        initialDecision,
-        targetMemory,
-      );
+    if (conflictDecision.supersedes && targetMemory) {
+      await this.supersedeMemory(initialDecision, targetMemory);
 
       return;
     }
 
-    if (
-      initialDecision.action ===
-      "confirm"
-    ) {
-      const duplicateDecision =
-        await this.findDuplicateMemory(
-          initialDecision.memory,
-          existingMemories,
-        );
+    if (initialDecision.action === "confirm") {
+      const duplicateDecision = await this.findDuplicateMemory(
+        initialDecision.memory,
+        existingMemories,
+      );
 
-      if (
-        duplicateDecision.memoryId
-      ) {
-        this.memory.confirm(
-          duplicateDecision.memoryId,
-        );
+      if (duplicateDecision.memoryId) {
+        this.memory.confirm(duplicateDecision.memoryId);
 
-        console.log(
-          `[Memory confirmed] ` +
-          `${duplicateDecision.memoryId}`,
-        );
+        console.log(`[Memory confirmed] ` + `${duplicateDecision.memoryId}`);
       }
 
       return;
     }
 
-    const duplicateDecision =
-      await this.findDuplicateMemory(
-        initialDecision.memory,
-        existingMemories,
-      );
+    const duplicateDecision = await this.findDuplicateMemory(
+      initialDecision.memory,
+      existingMemories,
+    );
 
-    if (
-      duplicateDecision.duplicate &&
-      duplicateDecision.memoryId
-    ) {
-      this.memory.confirm(
-        duplicateDecision.memoryId,
-      );
+    if (duplicateDecision.duplicate && duplicateDecision.memoryId) {
+      this.memory.confirm(duplicateDecision.memoryId);
 
       console.log(
         `[Memory duplicate confirmed] ` +
-        `${duplicateDecision.memoryId} ` +
-        `(similarity=${duplicateDecision.similarity.toFixed(3)})`,
+          `${duplicateDecision.memoryId} ` +
+          `(similarity=${duplicateDecision.similarity.toFixed(3)})`,
       );
 
       return;
     }
 
-    const embedding =
-      await this.embeddingService.embed(
-        initialDecision.memory,
-      );
+    const embedding = await this.embeddingService.embed(initialDecision.memory);
 
-    if (
-      initialDecision.action ===
-      "update" &&
-      targetMemory
-    ) {
+    if (initialDecision.action === "update" && targetMemory) {
       this.memory.update(
         targetMemory.id,
         initialDecision.memory,
@@ -268,82 +189,45 @@ export class MemoryManager {
         initialDecision.confidence,
       );
 
-      console.log(
-        `[Memory updated] ` +
-        `${targetMemory.id}`,
-      );
+      console.log(`[Memory updated] ` + `${targetMemory.id}`);
 
       return;
     }
 
     this.memory.add({
-      topic:
-        initialDecision.topic,
+      topic: initialDecision.topic,
 
-      content:
-        initialDecision.memory,
+      content: initialDecision.memory,
 
       embedding,
 
-      importance:
-        initialDecision.importance,
+      importance: initialDecision.importance,
 
-      confidence:
-        initialDecision.confidence,
+      confidence: initialDecision.confidence,
 
-      source:
-        initialDecision.source,
+      source: initialDecision.source,
 
-      freshness:
-        "stable",
+      freshness: "stable",
     });
 
-    console.log(
-      `[Memory created] ` +
-      `${initialDecision.topic}`,
-    );
+    console.log(`[Memory created] ` + `${initialDecision.topic}`);
   }
 
-  async search(
-    query: string,
-  ): Promise<MemorySearchResponse> {
-    const temporalIntent =
-      await this.classifyTemporalIntent(
-        query,
-      );
+  async search(query: string): Promise<MemorySearchResponse> {
+    const temporalIntent = await this.classifyTemporalIntent(query);
 
-    console.log(
-      `[Memory temporal] ` +
-      `intent=${temporalIntent}`,
-    );
+    console.log(`[Memory temporal] ` + `intent=${temporalIntent}`);
 
-    const embedding =
-      await this.embeddingService.embed(
-        query,
-      );
+    const embedding = await this.embeddingService.embed(query);
 
     const candidates =
-      temporalIntent ===
-        "historical" ||
-        temporalIntent ===
-        "mixed"
-        ? this.memory
-          .findSimilarIncludingHistory(
-            embedding,
-          )
-        : this.memory.findSimilar(
-          embedding,
-        );
+      temporalIntent === "historical" || temporalIntent === "mixed"
+        ? this.memory.findSimilarIncludingHistory(embedding)
+        : this.memory.findSimilar(embedding);
 
-    const candidateDiagnostics =
-      this.buildCandidateDiagnostics(
-        candidates,
-      );
+    const candidateDiagnostics = this.buildCandidateDiagnostics(candidates);
 
-    if (
-      candidates.length ===
-      0
-    ) {
+    if (candidates.length === 0) {
       return {
         memories: [],
 
@@ -361,26 +245,13 @@ export class MemoryManager {
       };
     }
 
-    const reranked =
-      await this.reranker.rerank(
-        query,
-        candidates,
-      );
+    const reranked = await this.reranker.rerank(query, candidates);
 
-    const memories =
-      this.filterRetrievedMemories(
-        reranked,
-        temporalIntent,
-      );
+    const memories = this.filterRetrievedMemories(reranked, temporalIntent);
 
     const timelines =
-      temporalIntent ===
-        "historical" ||
-        temporalIntent ===
-        "mixed"
-        ? this.buildTimelines(
-          memories,
-        )
+      temporalIntent === "historical" || temporalIntent === "mixed"
+        ? this.buildTimelines(memories)
         : [];
 
     return {
@@ -393,11 +264,9 @@ export class MemoryManager {
       diagnostics: {
         ...candidateDiagnostics,
 
-        rerankedCount:
-          reranked.length,
+        rerankedCount: reranked.length,
 
-        relevantCount:
-          memories.length,
+        relevantCount: memories.length,
       },
     };
   }
@@ -411,39 +280,25 @@ export class MemoryManager {
   }
 
   private buildCandidateDiagnostics(
-    candidates:
-      MemorySearchResult[],
+    candidates: MemorySearchResult[],
   ): Pick<
     MemorySearchDiagnostics,
-    | "candidateCount"
-    | "activeCandidateCount"
-    | "historicalCandidateCount"
+    "candidateCount" | "activeCandidateCount" | "historicalCandidateCount"
   > {
-    let activeCandidateCount =
-      0;
+    let activeCandidateCount = 0;
 
-    let historicalCandidateCount =
-      0;
+    let historicalCandidateCount = 0;
 
-    for (
-      const candidate of
-      candidates
-    ) {
-      if (
-        candidate.memory.lifecycle ===
-        "active"
-      ) {
-        activeCandidateCount +=
-          1;
+    for (const candidate of candidates) {
+      if (candidate.memory.lifecycle === "active") {
+        activeCandidateCount += 1;
       } else {
-        historicalCandidateCount +=
-          1;
+        historicalCandidateCount += 1;
       }
     }
 
     return {
-      candidateCount:
-        candidates.length,
+      candidateCount: candidates.length,
 
       activeCandidateCount,
 
@@ -451,41 +306,22 @@ export class MemoryManager {
     };
   }
 
-  private buildTimelines(
-    memories:
-      RerankedMemory[],
-  ): MemoryTimeline[] {
-    const topics =
-      new Set(
-        memories.map(
-          (result) =>
-            result.memory.topic,
-        ),
-      );
+  private buildTimelines(memories: RerankedMemory[]): MemoryTimeline[] {
+    const topics = new Set(memories.map((result) => result.memory.topic));
 
-    const timelines:
-      MemoryTimeline[] = [];
+    const timelines: MemoryTimeline[] = [];
 
-    for (
-      const topic of topics
-    ) {
-      const timeline =
-        this.memory.findTopicTimeline(
-          topic,
-        );
+    for (const topic of topics) {
+      const timeline = this.memory.findTopicTimeline(topic);
 
-      if (
-        timeline.length ===
-        0
-      ) {
+      if (timeline.length === 0) {
         continue;
       }
 
       timelines.push({
         topic,
 
-        memories:
-          timeline,
+        memories: timeline,
       });
     }
 
@@ -574,104 +410,61 @@ For temporary events, do not automatically
 treat them as permanent preferences.
 `;
 
-    const result =
-      await this.classifierModel.generate({
-        prompt,
+    const result = await this.classifierModel.generate({
+      prompt,
 
-        maxTokens: 300,
+      maxTokens: 300,
 
-        thinking: false,
-      });
+      thinking: false,
+    });
 
     try {
-      const parsed =
-        JSON.parse(
-          result,
-        ) as {
-          action?: unknown;
+      const parsed = JSON.parse(result) as {
+        action?: unknown;
 
-          topic?: unknown;
+        topic?: unknown;
 
-          memory?: unknown;
+        memory?: unknown;
 
-          importance?: unknown;
+        importance?: unknown;
 
-          confidence?: unknown;
+        confidence?: unknown;
 
-          source?: unknown;
-        };
+        source?: unknown;
+      };
 
-      const validActions = [
-        "create",
-        "update",
-        "confirm",
-        "keep",
-      ] as const;
+      const validActions = ["create", "update", "confirm", "keep"] as const;
 
-      const validSources = [
-        "explicit",
-        "inferred",
-        "updated",
-      ] as const;
+      const validSources = ["explicit", "inferred", "updated"] as const;
 
-      const action =
-        validActions.includes(
-          parsed.action as
-          (typeof validActions)[number],
-        )
-          ? parsed.action as
-          MemoryClassification["action"]
-          : "keep";
+      const action = validActions.includes(
+        parsed.action as (typeof validActions)[number],
+      )
+        ? (parsed.action as MemoryClassification["action"])
+        : "keep";
 
-      const source =
-        validSources.includes(
-          parsed.source as
-          (typeof validSources)[number],
-        )
-          ? parsed.source as
-          MemoryClassification["source"]
-          : "explicit";
+      const source = validSources.includes(
+        parsed.source as (typeof validSources)[number],
+      )
+        ? (parsed.source as MemoryClassification["source"])
+        : "explicit";
 
-      const topic =
-        typeof parsed.topic ===
-          "string"
-          ? parsed.topic.trim()
-          : "";
+      const topic = typeof parsed.topic === "string" ? parsed.topic.trim() : "";
 
       const memory =
-        typeof parsed.memory ===
-          "string"
-          ? parsed.memory.trim()
-          : "";
+        typeof parsed.memory === "string" ? parsed.memory.trim() : "";
 
       const importance =
-        typeof parsed.importance ===
-          "number"
-          ? Math.min(
-            5,
-            Math.max(
-              1,
-              parsed.importance,
-            ),
-          )
+        typeof parsed.importance === "number"
+          ? Math.min(5, Math.max(1, parsed.importance))
           : 3;
 
       const confidence =
-        typeof parsed.confidence ===
-          "number"
-          ? Math.min(
-            1,
-            Math.max(
-              0,
-              parsed.confidence,
-            ),
-          )
+        typeof parsed.confidence === "number"
+          ? Math.min(1, Math.max(0, parsed.confidence))
           : 0;
 
-      if (
-        action !== "keep" &&
-        (!topic || !memory)
-      ) {
+      if (action !== "keep" && (!topic || !memory)) {
         return {
           action: "keep",
 
@@ -719,15 +512,10 @@ treat them as permanent preferences.
 
   private async analyzeConflict(
     userMessage: string,
-    classification:
-      MemoryClassification,
-    existingMemories:
-      Memory[],
+    classification: MemoryClassification,
+    existingMemories: Memory[],
   ): Promise<MemoryConflictDecision> {
-    if (
-      existingMemories.length ===
-      0
-    ) {
+    if (existingMemories.length === 0) {
       return {
         conflict: false,
 
@@ -737,17 +525,14 @@ treat them as permanent preferences.
       };
     }
 
-    const existingMemoryContext =
-      existingMemories
-        .map(
-          (memory) =>
-            `ID: ${memory.id}\n` +
-            `Topic: ${memory.topic}\n` +
-            `Memory: ${memory.content}`,
-        )
-        .join(
-          "\n\n",
-        );
+    const existingMemoryContext = existingMemories
+      .map(
+        (memory) =>
+          `ID: ${memory.id}\n` +
+          `Topic: ${memory.topic}\n` +
+          `Memory: ${memory.content}`,
+      )
+      .join("\n\n");
 
     const prompt = `
 You are a memory conflict analyzer.
@@ -800,76 +585,46 @@ replace a permanent fact.
 confidence must be between 0 and 1.
 `;
 
-    const result =
-      await this.memoryModel.generate({
-        prompt,
+    const result = await this.memoryModel.generate({
+      prompt,
 
-        maxTokens: 250,
+      maxTokens: 250,
 
-        thinking: false,
-      });
+      thinking: false,
+    });
 
-    console.log(
-      `[Memory conflict raw] ${result}`,
-    );
+    console.log(`[Memory conflict raw] ${result}`);
 
     try {
-      const parsed =
-        JSON.parse(
-          result,
-        ) as {
-          conflict?: unknown;
+      const parsed = JSON.parse(result) as {
+        conflict?: unknown;
 
-          supersedes?: unknown;
+        supersedes?: unknown;
 
-          targetMemoryId?: unknown;
+        targetMemoryId?: unknown;
 
-          confidence?: unknown;
-        };
+        confidence?: unknown;
+      };
 
       const targetMemoryId =
-        typeof parsed.targetMemoryId ===
-          "string"
+        typeof parsed.targetMemoryId === "string"
           ? parsed.targetMemoryId
           : undefined;
 
       const validTarget =
         targetMemoryId &&
-          existingMemories.some(
-            (memory) =>
-              memory.id ===
-              targetMemoryId,
-          )
+        existingMemories.some((memory) => memory.id === targetMemoryId)
           ? targetMemoryId
           : undefined;
 
       const confidence =
-        typeof parsed.confidence ===
-          "number"
-          ? Math.min(
-            1,
-            Math.max(
-              0,
-              parsed.confidence,
-            ),
-          )
+        typeof parsed.confidence === "number"
+          ? Math.min(1, Math.max(0, parsed.confidence))
           : 0;
 
-      const supersedes =
-        Boolean(
-          parsed.supersedes,
-        ) &&
-        Boolean(
-          validTarget,
-        );
+      const supersedes = Boolean(parsed.supersedes) && Boolean(validTarget);
 
-      const conflict =
-        Boolean(
-          parsed.conflict,
-        ) &&
-        Boolean(
-          validTarget,
-        );
+      const conflict = Boolean(parsed.conflict) && Boolean(validTarget);
 
       return {
         conflict,
@@ -878,9 +633,8 @@ confidence must be between 0 and 1.
 
         ...(validTarget
           ? {
-            targetMemoryId:
-              validTarget,
-          }
+              targetMemoryId: validTarget,
+            }
           : {}),
 
         confidence,
@@ -898,13 +652,9 @@ confidence must be between 0 and 1.
 
   private async findDuplicateMemory(
     content: string,
-    existingMemories:
-      Memory[],
+    existingMemories: Memory[],
   ): Promise<DuplicateDecision> {
-    if (
-      existingMemories.length ===
-      0
-    ) {
+    if (existingMemories.length === 0) {
       return {
         duplicate: false,
 
@@ -912,163 +662,97 @@ confidence must be between 0 and 1.
       };
     }
 
-    const embedding =
-      await this.embeddingService.embed(
-        content,
-      );
+    const embedding = await this.embeddingService.embed(content);
 
-    let bestMemory:
-      | Memory
-      | undefined;
+    let bestMemory: Memory | undefined;
 
-    let bestSimilarity =
-      0;
+    let bestSimilarity = 0;
 
-    for (
-      const memory of
-      existingMemories
-    ) {
-      const similarity =
-        this.cosineSimilarity(
-          embedding,
-          memory.embedding,
-        );
+    for (const memory of existingMemories) {
+      const similarity = this.cosineSimilarity(embedding, memory.embedding);
 
-      if (
-        similarity >
-        bestSimilarity
-      ) {
-        bestSimilarity =
-          similarity;
+      if (similarity > bestSimilarity) {
+        bestSimilarity = similarity;
 
-        bestMemory =
-          memory;
+        bestMemory = memory;
       }
     }
 
-    const threshold =
-      0.85;
+    const threshold = 0.85;
 
     return {
-      duplicate:
-        bestSimilarity >=
-        threshold,
+      duplicate: bestSimilarity >= threshold,
 
       ...(bestMemory
         ? {
-          memoryId:
-            bestMemory.id,
-        }
+            memoryId: bestMemory.id,
+          }
         : {}),
 
-      similarity:
-        bestSimilarity,
+      similarity: bestSimilarity,
     };
   }
 
   private async supersedeMemory(
-    classification:
-      MemoryClassification,
-    targetMemory:
-      Memory,
+    classification: MemoryClassification,
+    targetMemory: Memory,
   ): Promise<void> {
-    this.memory.supersede(
-      targetMemory.id,
-    );
+    this.memory.supersede(targetMemory.id);
 
-    const activeMemories =
-      this.memory.findActiveByTopic(
-        targetMemory.topic,
-      );
+    const activeMemories = this.memory.findActiveByTopic(targetMemory.topic);
 
-    const duplicateThreshold =
-      0.85;
+    const duplicateThreshold = 0.85;
 
-    for (
-      const memory of
-      activeMemories
-    ) {
-      if (
-        memory.id ===
-        targetMemory.id
-      ) {
+    for (const memory of activeMemories) {
+      if (memory.id === targetMemory.id) {
         continue;
       }
 
-      const similarity =
-        this.cosineSimilarity(
-          targetMemory.embedding,
-          memory.embedding,
-        );
+      const similarity = this.cosineSimilarity(
+        targetMemory.embedding,
+        memory.embedding,
+      );
 
-      if (
-        similarity >=
-        duplicateThreshold
-      ) {
-        this.memory.supersede(
-          memory.id,
-        );
+      if (similarity >= duplicateThreshold) {
+        this.memory.supersede(memory.id);
 
         console.log(
           `[Memory duplicate superseded] ` +
-          `${memory.id} ` +
-          `(similarity=${similarity.toFixed(3)})`,
+            `${memory.id} ` +
+            `(similarity=${similarity.toFixed(3)})`,
         );
       }
     }
 
-    const embedding =
-      await this.embeddingService.embed(
-        classification.memory,
-      );
+    const embedding = await this.embeddingService.embed(classification.memory);
 
     this.memory.add({
-      topic:
-        classification.topic,
+      topic: classification.topic,
 
-      content:
-        classification.memory,
+      content: classification.memory,
 
       embedding,
 
-      importance:
-        classification.importance,
+      importance: classification.importance,
 
-      confidence:
-        classification.confidence,
+      confidence: classification.confidence,
 
-      source:
-        "updated",
+      source: "updated",
 
-      freshness:
-        "stable",
+      freshness: "stable",
 
-      supersedesId:
-        targetMemory.id,
+      supersedesId: targetMemory.id,
     });
 
-    console.log(
-      `[Memory superseded] ` +
-      `${targetMemory.id} → new memory`,
-    );
+    console.log(`[Memory superseded] ` + `${targetMemory.id} → new memory`);
   }
 
-  private async classifyTemporalIntent(
-    query: string,
-  ): Promise<TemporalIntent> {
-    if (
-      this.isMixedTemporalQuery(
-        query,
-      )
-    ) {
+  private async classifyTemporalIntent(query: string): Promise<TemporalIntent> {
+    if (this.isMixedTemporalQuery(query)) {
       return "mixed";
     }
 
-    if (
-      this.isHistoricalQuery(
-        query,
-      )
-    ) {
+    if (this.isHistoricalQuery(query)) {
       return "historical";
     }
 
@@ -1118,30 +802,23 @@ USER QUESTION:
 ${query}
 `;
 
-    const result =
-      await this.memoryModel.generate({
-        prompt,
+    const result = await this.memoryModel.generate({
+      prompt,
 
-        maxTokens: 100,
+      maxTokens: 100,
 
-        thinking: false,
-      });
+      thinking: false,
+    });
 
     try {
-      const parsed =
-        JSON.parse(
-          result,
-        ) as {
-          intent?: unknown;
-        };
+      const parsed = JSON.parse(result) as {
+        intent?: unknown;
+      };
 
       if (
-        parsed.intent ===
-        "current" ||
-        parsed.intent ===
-        "historical" ||
-        parsed.intent ===
-        "mixed"
+        parsed.intent === "current" ||
+        parsed.intent === "historical" ||
+        parsed.intent === "mixed"
       ) {
         return parsed.intent;
       }
@@ -1154,9 +831,7 @@ ${query}
     return "current";
   }
 
-  private isMixedTemporalQuery(
-    query: string,
-  ): boolean {
+  private isMixedTemporalQuery(query: string): boolean {
     const mixedPatterns = [
       /\bbefore\b.*\bnow\b/i,
 
@@ -1179,17 +854,10 @@ ${query}
       /\bnow\b.*\bthen\b/i,
     ];
 
-    return mixedPatterns.some(
-      (pattern) =>
-        pattern.test(
-          query,
-        ),
-    );
+    return mixedPatterns.some((pattern) => pattern.test(query));
   }
 
-  private isHistoricalQuery(
-    query: string,
-  ): boolean {
+  private isHistoricalQuery(query: string): boolean {
     const historicalPatterns = [
       /\bpreviously\b/i,
 
@@ -1212,55 +880,31 @@ ${query}
       /\bback then\b/i,
     ];
 
-    return historicalPatterns.some(
-      (pattern) =>
-        pattern.test(
-          query,
-        ),
-    );
+    return historicalPatterns.some((pattern) => pattern.test(query));
   }
 
   private filterRetrievedMemories(
-    memories:
-      RerankedMemory[],
-    temporalIntent:
-      TemporalIntent,
+    memories: RerankedMemory[],
+    temporalIntent: TemporalIntent,
   ): RerankedMemory[] {
-    const minimumSemanticScore =
-      temporalIntent ===
-        "current"
-        ? 0.25
-        : 0.10;
+    const minimumSemanticScore = temporalIntent === "current" ? 0.25 : 0.1;
 
-    const maximumMemories =
-      5;
+    const maximumMemories = 5;
 
     return memories
-      .filter(
-        (result) =>
-          result.semanticConfidence >=
-          minimumSemanticScore,
-      )
-      .slice(
-        0,
-        maximumMemories,
-      );
+      .filter((result) => result.semanticConfidence >= minimumSemanticScore)
+      .slice(0, maximumMemories);
   }
 
-  private shouldInspectMemory(
-    userMessage: string,
-  ): boolean {
-    const text =
-      userMessage.trim();
+  private shouldInspectMemory(userMessage: string): boolean {
+    const text = userMessage.trim();
 
     if (!text) {
       return false;
     }
 
     if (
-      text.endsWith(
-        "?",
-      ) ||
+      text.endsWith("?") ||
       /^(what|why|how|when|where|who|which|can|could|would|should|is|are|do|does|did)\b/i.test(
         text,
       )
@@ -1268,11 +912,7 @@ ${query}
       return false;
     }
 
-    if (
-      /\b(i|i'm|i am|i've|i have|i'll|i will|my|me)\b/i.test(
-        text,
-      )
-    ) {
+    if (/\b(i|i'm|i am|i've|i have|i'll|i will|my|me)\b/i.test(text)) {
       return true;
     }
 
@@ -1287,14 +927,8 @@ ${query}
     return false;
   }
 
-  private cosineSimilarity(
-    a: number[],
-    b: number[],
-  ): number {
-    if (
-      a.length !==
-      b.length
-    ) {
+  private cosineSimilarity(a: number[], b: number[]): number {
+    if (a.length !== b.length) {
       return 0;
     }
 
@@ -1304,56 +938,26 @@ ${query}
 
     let magnitudeB = 0;
 
-    for (
-      let i = 0;
-      i < a.length;
-      i++
-    ) {
-      const valueA =
-        a[i];
+    for (let i = 0; i < a.length; i++) {
+      const valueA = a[i];
 
-      const valueB =
-        b[i];
+      const valueB = b[i];
 
-      if (
-        valueA ===
-        undefined ||
-        valueB ===
-        undefined
-      ) {
+      if (valueA === undefined || valueB === undefined) {
         continue;
       }
 
-      dot +=
-        valueA *
-        valueB;
+      dot += valueA * valueB;
 
-      magnitudeA +=
-        valueA *
-        valueA;
+      magnitudeA += valueA * valueA;
 
-      magnitudeB +=
-        valueB *
-        valueB;
+      magnitudeB += valueB * valueB;
     }
 
-    if (
-      magnitudeA === 0 ||
-      magnitudeB === 0
-    ) {
+    if (magnitudeA === 0 || magnitudeB === 0) {
       return 0;
     }
 
-    return (
-      dot /
-      (
-        Math.sqrt(
-          magnitudeA,
-        ) *
-        Math.sqrt(
-          magnitudeB,
-        )
-      )
-    );
+    return dot / (Math.sqrt(magnitudeA) * Math.sqrt(magnitudeB));
   }
 }

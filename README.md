@@ -42,8 +42,10 @@ The longer-term goal is to build a private, extensible AI chief of staff that ca
 
                            │
                            ▼
-                    Tools / MCP
-                     (planned)
+                    Tool Selection
+                           │
+                    Tool Execution
+                    (up to three steps)
 ```
 
 ## Current capabilities
@@ -69,8 +71,241 @@ Aira currently supports:
 - Chronological memory timelines
 - Memory consolidation and rescoring
 - Structured memory diagnostics
+- Model-driven tool selection and bounded multi-step execution
+- Current-time lookup with optional time zone
+
+## Tool use
+
+For each conversation turn, Aira gives the fast model the registered tool
+definitions, recent conversation, and memory context. The model can select
+one tool per step or decide that no further tool is needed. Each result is
+provided to the next selection, allowing Aira to follow a file-path hint.
+The loop stops after three selection steps, on an identical repeated call, or
+on an invalid decision or tool failure. Aira checks each selection, then
+uses Ajv to validate the arguments against the tool's JSON Schema before
+calling it. Validation does not coerce types, remove extra properties, or
+insert defaults. Schemas currently use synchronous JSON Schema draft-07;
+unsupported or invalid schemas prevent execution. Tools still check domain
+rules, such as whether a time zone is recognized, inside their implementation.
+
+The tool outcome is supplied to the answering model and answer evaluator.
+If an answer is escalated, the stronger model receives the same outcome;
+the tool is not executed again. Selection and execution failures are included
+in the context so the model can explain the limitation instead of inventing
+a successful result.
+
+The first registered tool is `current_time`. Try:
+
+```text
+What time is it in Melbourne?
+```
+
+The CLI prints `[Tools]` diagnostics for each conversation turn: status,
+whether execution was attempted, and selection, execution, and total time
+in milliseconds. `[Tool selection]` shows the decision, reason, and any
+selected tool name and arguments. `[Tool error]` identifies failures during
+selection, lookup, validation, execution, or result formatting. An execution attempt
+does not imply success: a tool may reject its arguments or throw an error.
+These diagnostics are separate from the tool context supplied to the model.
+
+It returns a UTC timestamp and local time for the selected time zone,
+defaulting to UTC when no time zone is supplied.
+Only the read-only current-time tool is registered by default.
+
+### Tool approval
+
+MCP tools require per-call approval by default. After arguments pass validation,
+Aira shows the tool name and arguments and asks you to type `yes`. Any other
+answer denies the call and stops the tool loop. Closing input, cancellation,
+and timeouts also prevent execution. Non-interactive CLI input cannot approve
+calls. Approval waits count against the step and loop deadlines.
+
+Set `"requireApproval": false` on a configured server to enable automatic
+execution of its allowlisted tools. The read-only GitHub and echo examples
+explicitly use this setting. A server's own annotations do not grant approval;
+the policy is controlled locally. The built-in current-time tool remains automatic.
+
+The approval gate is enforced by `ToolRunner`; callers invoking `Tool.execute`
+directly must enforce their own policy. It is not a process sandbox and does not
+control what a configured server does during startup. Each approval applies to
+one call, not future turns or other tools.
+
+To exercise approval in a real terminal without a model or GitHub connection:
+
+```bash
+npm run check:approval
+```
+
+This launches only the local echo fixture. Enter a message, then type `yes` to
+approve, `no` to deny, or press Ctrl+C while approval is pending to cancel.
+The check prints the stop reason and execution count. It uses the same approval
+handler, runner, and loop as Aira, with deterministic selection and no memory
+writes. `/exit` quits between checks.
+
+### MCP connection layer
+
+`src/tools/mcp-connection.ts` connects to local MCP servers using the official
+MCP SDK's stdio transport. It starts a server process, discovers its tools
+(including paginated lists), and adapts them to Aira's `Tool` interface.
+Names are scoped to the connection, such as `local/echo`.
+
+Aira optionally reads `aira.mcp.json` from its working directory at startup.
+With no file, it starts with built-in tools only. To try the local echo fixture:
+
+```bash
+cp aira.mcp.example.json aira.mcp.json
+npm start
+```
+
+Run `/tools` to see `current_time` and `fixture/echo`. The fixture also exposes
+`fail`, but it is not in the configured `tools` allowlist and is not registered.
+This example does not connect an external account. An allowlist enables tools
+for model-selected execution; `requireApproval` separately controls per-call review.
+
+`/tools` also shows whether each tool runs automatically or requires approval.
+Use `/tools github/get_file_contents` (or another registered tool name) to inspect
+its description, approval policy, and complete JSON input schema. A schema's
+`required` array names mandatory arguments; `properties` describes accepted
+fields. Inspection does not call the model, execute a tool, or write memory.
+
+Each server requires `name` and `tools` (remote tool names without the server
+prefix). Local servers require `command` and optionally `args`, `cwd`, and `env`.
+Remote servers require an HTTPS `url` and optionally `headers` and `authTokenEnv`.
+Both support `timeoutMs`. Transport-specific fields cannot be mixed.
+Relative working directories resolve against the configuration file's folder;
+server arguments are passed literally, without shell expansion. An empty
+`tools` list skips launching that server. The config file is Git-ignored because
+it may contain environment values. Commands in this file execute on startup,
+so configure only servers you intend to run.
+
+Invalid configuration, unsupported enabled tool schemas, startup failures,
+and unknown allowlisted tools stop
+startup and close connections already opened. Tools are published to the
+registry only after all configured servers are ready. `/exit`, end-of-input,
+Ctrl+C, and SIGTERM close active connections. Conversation turns run serially.
+
+MCP results preserve content blocks and structured output. Server tool errors
+become failed `ToolResult` values; connection errors reach the runner's error
+diagnostics. Requests default to a 30-second timeout, configurable through
+`timeoutMs`. A timeout does not prove that a remote action had no effect.
+Schemas still need to work with Aira's synchronous draft-07 validator.
+Discovery is a snapshot taken at connection time; automatic reconnection and
+tool-list change notifications are not implemented yet. Remote connections use
+Streamable HTTP with bearer-token authentication; interactive OAuth is not implemented.
+
+### GitHub repository reading
+
+The GitHub example uses [GitHub's hosted MCP server](https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md),
+with read-only mode enabled and four allowlisted tools: `get_file_contents`,
+`list_branches`, `list_commits`, and `get_commit`. Docker is not required.
+
+For a fresh setup, copy `aira.mcp.github.example.json` to `aira.mcp.json`.
+If you already have configured servers, merge its server entry instead.
+
+```bash
+npm run check:github -- Itspigrain/fraud-platform
+npm run start:github
+```
+
+With the local model server running, test model-driven selection and answering:
+
+```bash
+npm run check:github -- Itspigrain/fraud-platform --model frontend/README.md
+```
+
+This asks the fast model to choose a tool for reading the specified path (default
+`README.md`), checks the
+selected tool and repository arguments, executes the read, and prints an answer
+based on the result. It does not write conversation or long-term memory. It
+checks successful execution and a non-empty answer; factual answer quality still
+needs review. A successful GitHub tool response can contain a path suggestion
+instead of file contents; this single-step check does not follow such suggestions.
+Routing, answer evaluation, and escalation are outside this check.
+
+To test automatic follow-up from the root README hint:
+
+```bash
+npm run check:github -- Itspigrain/fraud-platform --loop
+```
+
+To include the real answer evaluator and bounded retry/escalation flow:
+
+```bash
+npm run check:github -- Itspigrain/fraud-platform --evaluate frontend/README.md
+```
+
+`--evaluate` runs the tool loop once, then prints evaluator decisions and the
+final answer role. Retries reuse that tool evidence. It requires both configured
+local models and still skips routing and memory writes. A first-pass acceptance
+does not test the live retry branch; deterministic tests cover those branches.
+
+`--loop` uses the same bounded loop as the CLI and prints diagnostics for each
+step. Earlier results are preserved for answering, evaluation, and escalation.
+The loop allows three selection steps and a total of 16,000 characters of tool
+context, including notices and interpretation rules. If a step's result does not
+fit, it is omitted in full, earlier results are preserved, and the loop stops
+with `context_limit`. The answer must acknowledge missing evidence rather than
+infer omitted content. `[Tool loop]` diagnostics show character usage and omitted
+step count. The character budget applies to tool context, not user prompts,
+conversation history, memory, or tool definitions. It does not cap network
+response size or process memory.
+
+The tool loop has a separate 180-second deadline, each selection/execution step
+has a 120-second deadline, and each local model request has a 120-second limit.
+Configured MCP request timeouts still apply and may be shorter. These are not
+an overall conversation deadline: memory retrieval, routing, evaluation, and
+answer generation are separate phases. Code callers can supply an `AbortSignal`
+to the loop or runner. Ctrl+C and SIGTERM signal cancellation before shutdown.
+
+Timeouts and cancellation stop further loop steps and appear as `timeout` or
+`cancelled` diagnostics. Signals propagate to model HTTP requests and MCP calls.
+Aira stops waiting even if a tool ignores the signal, but cannot guarantee that
+remote work has stopped or undo side effects. Interrupted operations are not
+automatically retried. Timers cannot interrupt synchronous code blocking the
+JavaScript event loop.
+
+These commands use `AIRA_GITHUB_TOKEN` if supplied, otherwise your existing
+`gh auth login` credential. Tokens remain in process memory and are not printed
+or written to configuration. Ordinary `npm start` requires `AIRA_GITHUB_TOKEN`
+to be set when the GitHub server is enabled. The application does not load `.env`
+files automatically.
+
+Try `/tools`, then “Read README.md from Itspigrain/fraud-platform” or
+“List branches in Itspigrain/fraud-platform”. Repository names belong in the
+request; this configuration does not restrict access to one repository. GitHub
+credential permissions determine which repositories are accessible. For narrower
+access, supply a fine-grained token limited to selected repositories with read
+permissions for repository contents. Tool allowlisting and read-only mode do
+not narrow the credential's underlying permissions.
+
+Aira executes at most three tool-selection steps per turn. Larger repository
+reviews can still require multiple requests. A successful connection check verifies a direct
+repository read, not the quality of model-selected answers.
 
 ## Models
+
+### Answer evaluation and retries
+
+After tool execution, Aira generates an answer using the collected evidence.
+Fast-model answers are evaluated before display. An `accept` decision with
+`passed: true` keeps the answer. A `retry` decision gives the fast model one
+chance to revise using the rejected answer and evaluator feedback, then evaluates
+the revision. Another retry request, a failed acceptance, or an `escalate`
+decision sends the task to the reasoning model.
+
+Evaluator responses must contain exactly a boolean `passed`, a finite numeric
+`score` from 0 to 1, a supported `action`, and a non-empty `reason`. Acceptance
+requires `passed: true` and a score of at least 0.8; retry and escalation require
+`passed: false` and a score below 0.8. Malformed or contradictory decisions
+produce an explicit escalation result rather than being coerced into approval.
+
+Retries and escalation reuse the original conversation state and tool evidence;
+they do not execute tools again. Only the final displayed answer enters
+conversation memory. The CLI reports each evaluation and the final model role.
+
+This bounds answer generation to two fast-model attempts and one reasoning-model
+attempt. Reasoning-model answers are not evaluated again, so escalation is not
+a guarantee of correctness. The evaluator is itself a model and can make mistakes.
 
 Aira currently runs local models using MLX.
 
@@ -236,11 +471,39 @@ Install Node dependencies:
 npm install
 ```
 
-Type-check the project:
+Run all automated checks (formatting, TypeScript, and tests):
 
 ```bash
-npx tsc --noEmit
+npm run check
 ```
+
+The checks use fixture servers and stub models; they need no GitHub credentials
+or running model server. Live GitHub/model checks remain separate commands.
+
+`.github/workflows/check.yml` runs the same checks on pushes and pull requests,
+and supports manual runs from the Actions tab. It uses Node.js 22 on Ubuntu,
+installs exact lockfile versions with `npm ci`, and runs `npm run check`.
+No custom secrets or live model server are required. The workflow uses the
+standard read-only repository token for checkout and does not persist its Git
+credentials. New runs cancel older runs for the same ref; jobs have a 15-minute
+limit. Hosted execution begins after the workflow and source changes are committed
+and pushed. Requiring a passing check before merge is a separate repository setting.
+
+Type-check the project separately:
+
+```bash
+npm run typecheck
+```
+
+Run the automated tests separately:
+
+```bash
+npm test
+```
+
+Use `npm run format` to apply TypeScript formatting, or `npm run format:check`
+to check it without editing files. The root `models/` directory is ignored for
+downloaded model data; `src/models/` contains application code and belongs in Git.
 
 Start the MLX server separately:
 
@@ -334,16 +597,23 @@ Do not commit personal memory, credentials, API keys, or other private runtime d
 - Bounded conversation memory
 - Turn-aware trimming
 - Rolling conversation summarization
+- Tool abstraction and registry
+- Shared tool argument validation
+- MCP stdio connection and tool adapter (tested with a local fixture server)
+- MCP startup configuration, tool allowlists, and shutdown cleanup
+- GitHub repository reading over Streamable HTTP
+- Tool selection
+- Bounded multi-step tool execution integrated into conversation turns
+- Shared tool-context character budget and explicit output omission
+- Tool-loop deadlines and cooperative cancellation
+- Per-call MCP approval with explicit configuration overrides
+- Current-time tool
 
 ### Next
 
-- Tool abstraction
-- MCP integration
-- Tool registry
-- Tool selection
-- Agent execution loop
+- Additional MCP service integrations
 - Tool-result evaluation
-- Safer action approval
+- More granular approval policies
 - GitHub integration
 - Calendar integration
 - Email integration

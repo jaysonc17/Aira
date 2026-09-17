@@ -1,8 +1,7 @@
 import type { AIModel } from "./models/local-model.js";
 import type { MemorySearchResult } from "./long-term-memory.js";
 
-export interface RerankedMemory
-  extends MemorySearchResult {
+export interface RerankedMemory extends MemorySearchResult {
   relevance: "relevant";
   rank: number;
 }
@@ -12,9 +11,7 @@ interface RerankerResponse {
 }
 
 export class MemoryReranker {
-  constructor(
-    private readonly model: AIModel,
-  ) {}
+  constructor(private readonly model: AIModel) {}
 
   async rerank(
     query: string,
@@ -24,23 +21,19 @@ export class MemoryReranker {
       return [];
     }
 
-    candidates =
-      this.deduplicateCandidates(
-        candidates,
-      );
+    candidates = this.deduplicateCandidates(candidates);
 
     if (candidates.length === 0) {
       return [];
     }
 
     const memories = candidates
-      .map(
-        (candidate, index) =>
-          [
-            `${index}: ${candidate.memory.content}`,
-            `semantic_score: ${candidate.score.toFixed(3)}`,
-            `importance: ${candidate.memory.importance}/5`,
-          ].join(" | "),
+      .map((candidate, index) =>
+        [
+          `${index}: ${candidate.memory.content}`,
+          `semantic_score: ${candidate.score.toFixed(3)}`,
+          `importance: ${candidate.memory.importance}/5`,
+        ].join(" | "),
       )
       .join("\n");
 
@@ -86,56 +79,46 @@ Rules:
 - Use importance only as a secondary tie-breaking signal.
 `;
 
-    const result =
-      await this.model.generate({
-        prompt,
-        maxTokens: 250,
-        thinking: false,
-      });
+    const result = await this.model.generate({
+      prompt,
+      maxTokens: 250,
+      thinking: false,
+    });
 
     try {
-      const parsed =
-        JSON.parse(result) as RerankerResponse;
+      const parsed = JSON.parse(result) as RerankerResponse;
 
-      if (
-        !Array.isArray(
-          parsed.ranked,
-        )
-      ) {
+      if (!Array.isArray(parsed.ranked)) {
         return [];
       }
 
-      const indexes =
-        parsed.ranked.filter(
-          (value): value is number =>
-            typeof value === "number" &&
-            Number.isInteger(value) &&
-            value >= 0 &&
-            value < candidates.length,
-        );
+      const indexes = parsed.ranked.filter(
+        (value): value is number =>
+          typeof value === "number" &&
+          Number.isInteger(value) &&
+          value >= 0 &&
+          value < candidates.length,
+      );
 
-      const uniqueIndexes =
-        [...new Set(indexes)];
+      const uniqueIndexes = [...new Set(indexes)];
 
-      return uniqueIndexes.flatMap(
-        (index, rank) => {
-          const candidate =
-            candidates[index];
+      return uniqueIndexes.flatMap((index, rank) => {
+        const candidate = candidates[index];
 
-          if (!candidate) {
-            return [];
-          }
+        if (!candidate) {
+          return [];
+        }
 
-          return [{
+        return [
+          {
             ...candidate,
 
-            relevance:
-              "relevant" as const,
+            relevance: "relevant" as const,
 
             rank: rank + 1,
-          }];
-        },
-      );
+          },
+        ];
+      });
     } catch {
       return [];
     }
@@ -146,21 +129,16 @@ Rules:
   ): MemorySearchResult[] {
     const threshold = 0.85;
 
-    const unique:
-      MemorySearchResult[] =
-      [];
+    const unique: MemorySearchResult[] = [];
 
-    for (
-      const candidate of candidates
-    ) {
-      const duplicate =
-        unique.some(
-          (existing) =>
-            this.cosineSimilarity(
-              candidate.memory.embedding,
-              existing.memory.embedding,
-            ) >= threshold,
-        );
+    for (const candidate of candidates) {
+      const duplicate = unique.some(
+        (existing) =>
+          this.cosineSimilarity(
+            candidate.memory.embedding,
+            existing.memory.embedding,
+          ) >= threshold,
+      );
 
       if (!duplicate) {
         unique.push(candidate);
@@ -170,10 +148,7 @@ Rules:
     return unique;
   }
 
-  private cosineSimilarity(
-    a: number[],
-    b: number[],
-  ): number {
+  private cosineSimilarity(a: number[], b: number[]): number {
     if (a.length !== b.length) {
       return 0;
     }
@@ -182,41 +157,23 @@ Rules:
     let magnitudeA = 0;
     let magnitudeB = 0;
 
-    for (
-      let i = 0;
-      i < a.length;
-      i++
-    ) {
+    for (let i = 0; i < a.length; i++) {
       const valueA = a[i];
       const valueB = b[i];
 
-      if (
-        valueA === undefined ||
-        valueB === undefined
-      ) {
+      if (valueA === undefined || valueB === undefined) {
         continue;
       }
 
       dot += valueA * valueB;
-      magnitudeA +=
-        valueA * valueA;
-      magnitudeB +=
-        valueB * valueB;
+      magnitudeA += valueA * valueA;
+      magnitudeB += valueB * valueB;
     }
 
-    if (
-      magnitudeA === 0 ||
-      magnitudeB === 0
-    ) {
+    if (magnitudeA === 0 || magnitudeB === 0) {
       return 0;
     }
 
-    return (
-      dot /
-      (
-        Math.sqrt(magnitudeA) *
-        Math.sqrt(magnitudeB)
-      )
-    );
+    return dot / (Math.sqrt(magnitudeA) * Math.sqrt(magnitudeB));
   }
 }
