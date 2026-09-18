@@ -1,3 +1,8 @@
+import {
+  ConversationSessions,
+  handleSessionCommand,
+} from "./conversation-sessions.js";
+import { CLI_HELP } from "./cli-help.js";
 import { generateAnswer } from "./answer-generator.js";
 import { Router } from "./router.js";
 
@@ -86,6 +91,7 @@ async function main() {
     summarizer: conversationSummarizer,
   });
 
+  const sessions = new ConversationSessions();
   const longTermMemory = new LongTermMemory();
 
   const embeddingService = new EmbeddingService();
@@ -117,21 +123,9 @@ async function main() {
 
   console.log("Personal AI assistant started.");
 
-  console.log("Type /memories to inspect long-term memory.");
-
-  console.log("Type /memory search <query> to search memory.");
-
-  console.log("Type /memory consolidate to consolidate memory.");
-
-  console.log("Type /memory rescore to rescore memory.");
-
-  console.log("Type /memory delete <id> to delete a memory.");
-
-  console.log("Type /memory clear to clear long-term memory.");
-
-  console.log("Type /tools to list available tools.");
-
-  console.log("Type /exit to quit.");
+  console.log(
+    "Type /help for commands, /new for a fresh conversation, or /exit to quit.",
+  );
 
   const cancellation = new AbortController();
   const shutdown = () => {
@@ -160,13 +154,43 @@ async function main() {
         continue;
       }
 
+      if (prompt === "/help") {
+        console.log(CLI_HELP);
+        rl.prompt();
+        continue;
+      }
+
+      if (prompt === "/new") {
+        conversationMemory.clear();
+        console.log(
+          "Started a new conversation. Long-term memory is unchanged.",
+        );
+        rl.prompt();
+        continue;
+      }
+
       try {
+        const sessionResponse = await handleSessionCommand(
+          prompt,
+          sessions,
+          conversationMemory,
+        );
+        if (sessionResponse !== null) {
+          console.log(sessionResponse);
+          rl.prompt();
+          continue;
+        }
         const toolInspection = inspectTools(prompt, toolRegistry);
         if (toolInspection !== null) {
           console.log(toolInspection);
         } else if (
           !(await handleCommand(prompt, longTermMemory, memoryManager))
         ) {
+          if (prompt.startsWith("/")) {
+            console.log("Unknown command. Type /help for available commands.");
+            rl.prompt();
+            continue;
+          }
           await handleConversation(
             prompt,
             router,
@@ -549,6 +573,16 @@ async function handleCommand(
       }
     }
 
+    return true;
+  }
+
+  if (input === "/memory search") {
+    console.log("Usage: /memory search <query>");
+    return true;
+  }
+
+  if (input === "/memory delete") {
+    console.log("Usage: /memory delete <id>");
     return true;
   }
 

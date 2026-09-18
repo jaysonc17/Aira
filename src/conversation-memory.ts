@@ -11,6 +11,12 @@ export interface ConversationMessage {
   createdAt: string;
 }
 
+export interface ConversationSnapshot {
+  version: 1;
+  messages: ConversationMessage[];
+  summary?: ConversationSummary;
+}
+
 export interface ConversationMemoryOptions {
   maximumMessages?: number;
   maximumCharacters?: number;
@@ -75,6 +81,21 @@ export class ConversationMemory {
 
   getSummaryContent(): string {
     return this.summary?.content ?? "";
+  }
+
+  snapshot(): ConversationSnapshot {
+    return {
+      version: 1,
+      messages: this.getMessages(),
+      ...(this.summary ? { summary: { ...this.summary } } : {}),
+    };
+  }
+
+  // Callers loading external data must validate it before restoring.
+  restore(snapshot: ConversationSnapshot): void {
+    const copy = structuredClone(snapshot);
+    this.messages.splice(0, this.messages.length, ...copy.messages);
+    this.summary = copy.summary;
   }
 
   clear(): void {

@@ -32,3 +32,6 @@ npm-debug.log*
 # runtime memory
 long-term-memory.json
 aira.mcp.json
+
+# Saved conversations
+.aira/sessions/

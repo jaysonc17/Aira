@@ -145,6 +145,22 @@ cache directory is Git-ignored. Failed checks still save reports; interrupted
 runs do not. Fingerprints describe local source files, not the running server's
 weights or settings, so reports alone cannot guarantee identical model behavior.
 
+Compare two saved reports without running a model:
+
+```bash
+npm run compare:evidence -- baseline.json candidate.json
+```
+
+The comparison matches case IDs and reports improvements, regressions, unchanged
+outcomes, and added/removed cases. Changed prompts, evidence, tool definitions,
+or expected answers are marked `case_changed` and excluded from improvement
+counts. Request errors remain visible as error/timeout outcomes; their timings
+are not compared. Source fingerprint changes and model roles are displayed, but
+semantic changes to the assessment contract still require human review.
+Exit code 1 means an unchanged case regressed; 2 means invalid input or a read
+error. Exit code 0 means no detected regression, not that every case passed or
+that the reports tested identical suites.
+
 Incorrect or malformed decisions and request errors produce a nonzero exit code;
 request errors are counted separately from decision failures. Each case has a
 120-second deadline, and Ctrl+C stops the suite. This small dataset helps compare
@@ -640,7 +656,54 @@ npm start
 
 ## Commands
 
-Aira currently provides several development/debugging commands.
+Type `/help` to see available commands inside Aira. Help is handled locally,
+without a model request or memory changes. Lines beginning with `/` are reserved
+for commands. Unknown commands show guidance locally; missing search queries or
+memory IDs show usage rather than reaching the model. To discuss a file path,
+include it in a sentence such as “Explain /path/to/file”. Aira provides these
+conversation and development/debugging commands.
+
+```text
+/session list
+/session inspect <name>
+/session save <name>
+/session load <name>
+/session delete <name>
+```
+
+Save and resume recent chat messages and the rolling summary. Use
+`/session inspect <name>` to validate a saved file and view message counts,
+summary size, and the last stored message timestamp without loading it or
+printing conversation content. Sessions are plain
+JSON files in `.aira/sessions/`, relative to the working directory and ignored by
+Git. Names use letters, digits, underscores, and hyphens (up to 64 characters,
+starting with a letter or digit). Saving requires a new name; existing files are
+not overwritten. A save writes and syncs a temporary file before atomically
+publishing the session name; concurrent saves cannot overwrite one another.
+This requires a filesystem supporting hard links. Interrupted temporary files
+are excluded from session listing; directory metadata is not synced, so this is
+not a guarantee against loss during a power failure. Nothing is saved automatically.
+
+Loading replaces active conversation context after validation; invalid or missing
+files leave it intact. Long-term memory, tool connections, and approval policies
+are not included or changed. Commands run between turns and make no model calls.
+Files are limited to 1 MiB and 1,000 recent messages. Sessions contain conversation
+text, so treat them as private local data. Use `/session delete <name>` to delete a saved file immediately; the active
+conversation and long-term memory are unchanged. This command can also remove
+a malformed saved file. `/new` clears active context but does not remove saved sessions.
+A restart regression test launches two separate CLI processes and verifies that
+messages and the rolling summary survive save/load, while `/new` leaves existing
+saved files intact. This tests persistence without requiring a live model.
+
+```text
+/new
+```
+
+Start a fresh conversation by clearing recent messages and the rolling summary.
+Long-term memories remain available for retrieval, and tools stay connected.
+The command makes no model request. Commands are processed between turns, so
+`/new` does not cancel an in-flight request. Use `/memory clear` separately if you
+intend to delete long-term memory.
 
 ```text
 /memories
@@ -716,6 +779,7 @@ Do not commit personal memory, credentials, API keys, or other private runtime d
 - Memory diagnostics
 - Memory confidence and source reliability
 - Bounded conversation memory
+- Explicit local conversation save/load with rolling summaries
 - Turn-aware trimming
 - Rolling conversation summarization
 - Tool abstraction and registry
@@ -743,7 +807,6 @@ Do not commit personal memory, credentials, API keys, or other private runtime d
 ### Future
 
 - 70B+ expert model
-- Persistent conversation sessions
 - Memory database/vector store
 - Memory maintenance jobs
 - Planning

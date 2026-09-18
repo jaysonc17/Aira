@@ -88,7 +88,7 @@ test("CLI loads config, lists only enabled tools, and exits cleanly", { timeout:
     output += chunk;
     if (!sent && output.includes("You:")) {
       sent = true;
-      child.stdin.write("/tools\n/tools fixture/echo\n/tools missing\n/exit\n");
+      child.stdin.write("/hepl\n/memory search\n/memory delete\n/memory clear extra\n/help\n/new\n/session save cli-test\n/session list\n/session load cli-test\n/tools\n/tools fixture/echo\n/tools missing\n/exit\n");
     }
   });
   const code = await new Promise((resolve, reject) => {
@@ -96,6 +96,17 @@ test("CLI loads config, lists only enabled tools, and exits cleanly", { timeout:
     child.once("close", resolve);
   });
   assert.equal(code, 0, errors);
+  assert.match(output, /Unknown command\. Type \/help/);
+  assert.match(output, /Usage: \/memory search <query>/);
+  assert.match(output, /Usage: \/memory delete <id>/);
+  assert.doesNotMatch(output, /All long-term memories cleared/);
+  assert.doesNotMatch(output, /\[Router\]/);
+  assert.match(output, /Saved conversation: cli-test/);
+  assert.match(output, /Loaded conversation: cli-test/);
+  assert.match(output, /Commands:/);
+  assert.match(output, /\/memory clear\s+Delete all long-term memories; keep current chat context/);
+  assert.match(output, /\/tools <name>/);
+  assert.match(output, /Started a new conversation\. Long-term memory is unchanged\./);
   assert.match(output, /fixture\/echo:/);
   assert.match(output, /current_time:/);
   assert.doesNotMatch(output, /fixture\/fail:/);
