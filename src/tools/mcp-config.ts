@@ -14,6 +14,7 @@ export interface McpServerConfig {
   tools: string[];
   timeoutMs?: number;
   requireApproval?: boolean;
+  toolApproval?: Record<string, boolean>;
 }
 
 // Required fields in transport branches are declared on the parent schema.
@@ -67,6 +68,10 @@ const validate = new Ajv({ strict: true, strictRequired: false }).compile({
           },
           timeoutMs: { type: "integer", minimum: 1 },
           requireApproval: { type: "boolean" },
+          toolApproval: {
+            type: "object",
+            additionalProperties: { type: "boolean" },
+          },
         },
       },
     },
@@ -98,6 +103,7 @@ export async function loadMcpConfig(
       throw new Error(`Duplicate MCP server name: ${server.name}`);
     }
     names.add(server.name);
+    validateToolApproval(server);
     if (server.url) {
       const url = new URL(server.url);
       if (url.username || url.password || url.hash) {
@@ -112,4 +118,15 @@ export async function loadMcpConfig(
       ? {}
       : { cwd: resolve(dirname(resolve(path)), server.cwd ?? ".") }),
   }));
+}
+
+// Validate overrides for programmatic callers as well as JSON configuration.
+export function validateToolApproval(server: McpServerConfig): void {
+  for (const [name, required] of Object.entries(server.toolApproval ?? {})) {
+    if (!server.tools.includes(name) || typeof required !== "boolean") {
+      throw new Error(
+        `Invalid approval override for MCP tool: ${server.name}/${name}`,
+      );
+    }
+  }
 }

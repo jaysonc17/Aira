@@ -119,3 +119,36 @@ test("small results stay intact and budgets are validated", async () => {
     assert.throws(() => new ToolLoop({}, 3, budget), /at least 2048/);
   }
 });
+
+test("progress arrives before pending work completes and includes no tool data", async () => {
+  const events = [];
+  let finish;
+  const runner = { run() { return new Promise((resolve) => { finish = resolve; }); } };
+  const evaluator = { async evaluate() {
+    assert.deepEqual(events.at(-1), { step: 1, phase: "evidence_evaluation", state: "started" });
+    return { action: "sufficient", reason: "Complete" };
+  } };
+  const pending = new ToolLoop(runner, 3, 16_000, evaluator, (event) => events.push(event)).run("Private prompt");
+  assert.deepEqual(events, [{ step: 1, phase: "tool_step", state: "started" }]);
+  finish({ context: "Private evidence", diagnostics: { status: "success", executionAttempted: true } });
+  const result = await pending;
+  assert.equal(result.stopReason, "sufficient");
+  assert.deepEqual(events, [
+    { step: 1, phase: "tool_step", state: "started" },
+    { step: 1, phase: "tool_step", state: "finished" },
+    { step: 1, phase: "evidence_evaluation", state: "started" },
+    { step: 1, phase: "evidence_evaluation", state: "finished" },
+  ]);
+});
+
+test("observer failures cannot rerun tools or discard their evidence", async () => {
+  for (const observer of [() => { throw new Error("Logging failed"); }, async () => { throw new Error("Async logging failed"); }]) {
+    let calls = 0;
+    const runner = { async run() { calls++; return { context: "Retained evidence", diagnostics: { status: "success", executionAttempted: true } }; } };
+    const evaluator = { async evaluate() { throw new Error("Evaluator unavailable"); } };
+    const result = await new ToolLoop(runner, 3, 16_000, evaluator, observer).run("Read");
+    assert.equal(calls, 1);
+    assert.equal(result.stopReason, "evaluation_error");
+    assert.match(result.context, /Retained evidence/);
+  }
+});

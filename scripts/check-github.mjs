@@ -8,6 +8,7 @@ import { ToolInputValidator } from "../src/tools/tool-input-validator.ts";
 import { ModelRegistry } from "../src/models/model-registry.ts";
 import { ToolSelector } from "../src/tools/tool-selector.ts";
 import { ToolRunner } from "../src/tools/tool-runner.ts";
+import { LlmToolResultEvaluator } from "../src/tools/tool-result-evaluator.ts";
 import { ToolLoop } from "../src/tools/tool-loop.ts";
 import { generateAnswer } from "../src/answer-generator.ts";
 import { LlmEvaluator } from "../src/llm-evaluator.ts";
@@ -46,14 +47,20 @@ try {
     const runner = new ToolRunner(new ToolSelector(selectionModel, registry), registry);
     const prompt = `Read ${filePath} from ${repository} and summarize its purpose in three short bullet points.`;
     console.log("Asking the local model to select a GitHub tool...");
-    const run = await (loopCheck ? new ToolLoop(runner) : runner).run(prompt);
+    const run = await (loopCheck ? new ToolLoop(runner, 3, 16_000, new LlmToolResultEvaluator(model, registry), ({ step, phase, state }) => {
+      console.log(`[Progress] step=${step} phase=${phase} state=${state}`);
+    }) : runner).run(prompt);
     const diagnostics = loopCheck ? run.steps : [run.diagnostics];
     console.log(JSON.stringify(diagnostics, null, 2));
-    if (loopCheck) console.log(`Loop stopped: ${run.stopReason}`);
+    if (loopCheck) {
+      console.log(`Loop stopped: ${run.stopReason}; totalMs=${run.totalMs.toFixed(1)}`);
+      console.log(JSON.stringify(run.evaluationDiagnostics, null, 2));
+      console.log(JSON.stringify(run.evaluations, null, 2));
+    }
     const selection = diagnostics[0].selection;
     if (
       diagnostics[0].status !== "success" ||
-      (loopCheck && run.stopReason !== "none") ||
+      (loopCheck && run.stopReason !== "sufficient") ||
       selection?.action !== "tool" ||
       selection.name !== "github/get_file_contents" ||
       selection.input.owner !== owner ||

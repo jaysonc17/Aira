@@ -12,7 +12,9 @@
     "start": "tsx src/index.ts",
     "start:github": "node --import tsx scripts/start-github.mjs",
     "check:github": "node --import tsx scripts/check-github.mjs",
-    "check:approval": "node --import tsx scripts/check-approval.mjs"
+    "check:approval": "node --import tsx scripts/check-approval.mjs",
+    "check:evidence": "node --import tsx scripts/check-evidence.mjs",
+    "check:tool-loop": "node --import tsx scripts/check-tool-loop.mjs"
   },
   "keywords": [],
   "author": "",

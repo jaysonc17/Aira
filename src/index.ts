@@ -25,6 +25,7 @@ import { ToolRegistry } from "./tools/tool-registry.js";
 import { inspectTools } from "./tools/tool-inspection.js";
 import { ToolSelector } from "./tools/tool-selector.js";
 import { ToolRunner } from "./tools/tool-runner.js";
+import { LlmToolResultEvaluator } from "./tools/tool-result-evaluator.js";
 import { ToolLoop } from "./tools/tool-loop.js";
 import { CurrentTimeTool } from "./tools/current-time-tool.js";
 import { loadMcpConfig } from "./tools/mcp-config.js";
@@ -47,6 +48,17 @@ async function main() {
           ? requestToolApproval(rl, request, signal)
           : Promise.resolve(false),
     ),
+    3,
+    16_000,
+    new LlmToolResultEvaluator(modelRegistry.get("fast"), toolRegistry),
+    ({ step, phase, state }) => {
+      if (state !== "started") return;
+      console.log(
+        phase === "tool_step"
+          ? `[Tools] Step ${step}: selecting a tool and running it if approved...`
+          : `[Tools] Step ${step}: checking whether the evidence is sufficient...`,
+      );
+    },
   );
 
   /*
@@ -303,8 +315,16 @@ async function handleConversation(
   console.log(
     `[Tool loop] steps=${toolRun.steps.length} stop=${toolRun.stopReason} ` +
       `contextChars=${toolRun.contextCharacters}/${toolRun.maximumContextCharacters} ` +
-      `omittedSteps=${toolRun.omittedSteps}`,
+      `omittedSteps=${toolRun.omittedSteps} totalMs=${toolRun.totalMs.toFixed(1)}`,
   );
+  for (const diagnostic of toolRun.evaluationDiagnostics) {
+    console.log(
+      `[Tool evaluation] step=${diagnostic.step} status=${diagnostic.status} durationMs=${diagnostic.durationMs.toFixed(1)}`,
+    );
+  }
+  for (const evaluation of toolRun.evaluations) {
+    console.log(`[Tool evidence] ${JSON.stringify(evaluation)}`);
+  }
   for (const toolDiagnostics of toolRun.steps) {
     console.log(
       `[Tools] status=${toolDiagnostics.status} ` +

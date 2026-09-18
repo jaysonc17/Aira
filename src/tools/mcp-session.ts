@@ -1,4 +1,5 @@
 import { McpConnection } from "./mcp-connection.js";
+import { validateToolApproval } from "./mcp-config.js";
 import type { McpServerConfig } from "./mcp-config.js";
 import type { Tool } from "./tool.js";
 import type { ToolRegistry } from "./tool-registry.js";
@@ -19,6 +20,7 @@ export class McpSession {
     const names = new Set(registry.list().map((tool) => tool.name));
 
     try {
+      for (const server of servers) validateToolApproval(server);
       for (const server of servers) {
         if (server.tools.length === 0) continue;
         const headers = { ...server.headers };
@@ -65,7 +67,11 @@ export class McpSession {
           );
           if (!tool)
             throw new Error(`Configured MCP tool was not found: ${name}`);
-          tool.definition.requiresApproval = server.requireApproval ?? true;
+          tool.definition.requiresApproval =
+            server.toolApproval &&
+            Object.hasOwn(server.toolApproval, remoteName)
+              ? server.toolApproval[remoteName]!
+              : (server.requireApproval ?? true);
           if (names.has(name))
             throw new Error(`Tool already registered: ${name}`);
           try {

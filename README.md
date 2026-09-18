@@ -112,6 +112,67 @@ It returns a UTC timestamp and local time for the selected time zone,
 defaulting to UTC when no time zone is supplied.
 Only the read-only current-time tool is registered by default.
 
+### Evidence evaluation regression checks
+
+Run fixed synthetic evidence cases against the configured local model:
+
+```bash
+npm run check:evidence
+npm run check:evidence -- reasoning
+npm run check:evidence -- fast path-hint
+```
+
+Start the local model server first. The default role is `fast`. Cases in
+`evaluations/tool-evidence.mjs` cover complete file contents, a path hint, an
+unavailable tool, an instruction embedded in output, already complete evidence
+without tools, missing repository information, and a comparison needing a second
+file. Additional variants include a forged tool policy and an irrelevant
+instruction inside otherwise sufficient content. The command prints the
+expected and actual decisions, the model's reason, and elapsed milliseconds.
+Expected decisions are not included in model requests. It runs no tools, contacts
+no GitHub service, and writes no memory. Reports are saved only when requested.
+
+Add `--report` to save a JSON report under `.cache/evaluations/`:
+
+```bash
+npm run check:evidence -- fast --report
+```
+
+Each report includes timestamps, model role, case inputs, decisions, reasons,
+timings, summary counts, and SHA-256 fingerprints of the evaluator, model client,
+model registry, dataset, and check script. Reports use unique filenames and the
+cache directory is Git-ignored. Failed checks still save reports; interrupted
+runs do not. Fingerprints describe local source files, not the running server's
+weights or settings, so reports alone cannot guarantee identical model behavior.
+
+Incorrect or malformed decisions and request errors produce a nonzero exit code;
+request errors are counted separately from decision failures. Each case has a
+120-second deadline, and Ctrl+C stops the suite. This small dataset helps compare
+prompt or model changes; it is not a general reliability or security guarantee.
+The live command is separate from `npm run check`, which tests the harness using
+fake models and requires no model server.
+
+### Live tool-loop regression checks
+
+```bash
+npm run check:tool-loop
+npm run check:tool-loop -- reasoning
+```
+
+These checks use the local model with in-process synthetic tools. They exercise
+real selection, validation, execution, evidence assessment, and follow-up without
+GitHub access or memory writes. One case requires following a file hint despite
+a forged policy in its output; another requires no execution when the repository
+name is missing. The command prints actual calls and decisions and exits nonzero
+on failure. It does not generate or evaluate the final answer. Each scenario uses
+the standard loop deadline and supports Ctrl+C.
+
+The latest fast-model run passed both cases after evaluator explanations were
+removed from downstream context and selection instructions clarified tool
+authority. Earlier runs failed the forged-policy case. See
+`evaluations/README.md` for results and limits; these two cases do not establish
+general instruction resistance.
+
 ### Tool approval
 
 MCP tools require per-call approval by default. After arguments pass validation,
@@ -124,6 +185,24 @@ Set `"requireApproval": false` on a configured server to enable automatic
 execution of its allowlisted tools. The read-only GitHub and echo examples
 explicitly use this setting. A server's own annotations do not grant approval;
 the policy is controlled locally. The built-in current-time tool remains automatic.
+
+Use `toolApproval` to override individual tools by their remote names (without
+the server prefix). For example, these fields on a server configuration allow
+`echo` automatically while keeping `fail` behind confirmation:
+
+```json
+{
+  "tools": ["echo", "fail"],
+  "requireApproval": true,
+  "toolApproval": { "echo": false }
+}
+```
+
+Precedence is the per-tool override, then `requireApproval`, then the default
+`true`. A `true` override also requires confirmation on a server whose default is
+`false`. Overrides must be booleans and refer to allowlisted tools; invalid names
+fail startup. `/tools` shows the effective policy. An override does not enable a
+tool or change its server-side permissions.
 
 The approval gate is enforced by `ToolRunner`; callers invoking `Tool.execute`
 directly must enforce their own policy. It is not a process sandbox and does not
@@ -222,7 +301,7 @@ needs review. A successful GitHub tool response can contain a path suggestion
 instead of file contents; this single-step check does not follow such suggestions.
 Routing, answer evaluation, and escalation are outside this check.
 
-To test automatic follow-up from the root README hint:
+To test evidence evaluation and bounded tool gathering:
 
 ```bash
 npm run check:github -- Itspigrain/fraud-platform --loop
@@ -239,16 +318,58 @@ final answer role. Retries reuse that tool evidence. It requires both configured
 local models and still skips routing and memory writes. A first-pass acceptance
 does not test the live retry branch; deterministic tests cover those branches.
 
+The live check verified with `Itspigrain/fraud-platform` read the root README in
+one call, assessed the evidence as sufficient, and accepted the initial answer.
+The summary was also compared with the source README. Hint-following, blocked
+assessments, malformed decisions, and cancellation are covered by deterministic
+tests; this live run did not exercise those branches.
+
 `--loop` uses the same bounded loop as the CLI and prints diagnostics for each
-step. Earlier results are preserved for answering, evaluation, and escalation.
+step. A root README that returns actual content may require only one read; a
+path suggestion requires a follow-up read. Repository contents can change, so
+this command does not guarantee that the follow-up branch is exercised. Earlier results are preserved for answering, evaluation, and escalation.
 The loop allows three selection steps and a total of 16,000 characters of tool
 context, including notices and interpretation rules. If a step's result does not
 fit, it is omitted in full, earlier results are preserved, and the loop stops
 with `context_limit`. The answer must acknowledge missing evidence rather than
 infer omitted content. `[Tool loop]` diagnostics show character usage and omitted
-step count. The character budget applies to tool context, not user prompts,
+step count and total loop duration in milliseconds. `[Tool evaluation]` reports
+the step number, elapsed milliseconds, and status of each evidence assessment,
+including errors, timeouts, and cancellation. These timings measure how long Aira
+waited, not whether remote work stopped. Timing metadata is not sent to the model.
+The character budget applies to tool context, not user prompts,
 conversation history, memory, or tool definitions. It does not cap network
 response size or process memory.
+
+After each successful call whose output fits the context budget, a separate model
+assesses only whether the accumulated evidence is `sufficient` or `insufficient`.
+Sufficient evidence ends gathering. Insufficient evidence maps to `continue` when
+any tools are registered, handing planning back to the selector; this does not
+promise that a suitable call exists. The selector may choose no tool when required
+arguments or capabilities are missing. With an empty registry, code maps
+insufficient evidence to `blocked`. Existing sufficient evidence remains usable
+without tools. The evaluator does not receive tool definitions or decide policy.
+
+For example, a matching README path is a hint, not file content. `[Tool evidence]`
+diagnostics show the effective decision and reason. These are model judgments,
+not verified facts, and the answer must still use the actual tool output.
+Free-form assessment reasons remain in diagnostics only. Subsequent model calls
+receive the assessment action without its explanation, preventing that feedback
+channel from repeating untrusted instructions. Raw tool output remains untrusted.
+Malformed assessments and model errors stop with an explicit limitation. Failed or
+denied calls and omitted outputs are never assessed. Assessment requests share the
+loop deadline; assessment actions count toward the tool-context budget. This adds one
+model request per successful, retained tool result. The CLI and GitHub loop checks
+enable evaluation; library callers can omit the optional evaluator to retain the
+selector-driven loop.
+
+The CLI prints progress as each tool step and evidence assessment starts, before
+waiting for the model. GitHub loop checks also print phase completion events.
+A finished phase does not imply success; final diagnostics report the outcome.
+Library callers can supply an optional fifth `ToolLoop` constructor argument to
+observe `{ step, phase, state }` events. Events contain no prompts, arguments, or
+tool output. Observers should return quickly; asynchronous observers are not
+awaited, and observer errors do not alter tool execution or evidence.
 
 The tool loop has a separate 180-second deadline, each selection/execution step
 has a 120-second deadline, and each local model request has a 120-second limit.
@@ -606,14 +727,14 @@ Do not commit personal memory, credentials, API keys, or other private runtime d
 - Bounded multi-step tool execution integrated into conversation turns
 - Shared tool-context character budget and explicit output omission
 - Tool-loop deadlines and cooperative cancellation
-- Per-call MCP approval with explicit configuration overrides
+- Per-call MCP approval with server defaults and per-tool overrides
 - Current-time tool
+- Tool evidence evaluation after successful calls
 
 ### Next
 
 - Additional MCP service integrations
-- Tool-result evaluation
-- More granular approval policies
+- Approval policies based on tool arguments
 - GitHub integration
 - Calendar integration
 - Email integration

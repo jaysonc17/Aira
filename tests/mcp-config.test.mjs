@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { loadMcpConfig } from "../src/tools/mcp-config.ts";
+import { ToolRunner } from "../src/tools/tool-runner.ts";
 import { McpSession } from "../src/tools/mcp-session.ts";
 import { ToolRegistry } from "../src/tools/tool-registry.ts";
 
@@ -103,4 +104,38 @@ test("CLI loads config, lists only enabled tools, and exits cleanly", { timeout:
   assert.match(output, /Input schema:/);
   assert.match(output, /"message"/);
   assert.match(output, /Unknown tool: missing/);
+});
+
+test("per-tool approval overrides take precedence over server defaults", async (t) => {
+  for (const requireApproval of [undefined, true, false]) {
+    const session = new McpSession();
+    t.after(() => session.close());
+    const registry = new ToolRegistry();
+    await session.start([{ ...server, tools: ["echo", "fail"],
+      ...(requireApproval === undefined ? {} : { requireApproval }),
+      toolApproval: { echo: requireApproval === false },
+    }], registry);
+    assert.equal(registry.get("fixture/echo").definition.requiresApproval, requireApproval === false);
+    assert.equal(registry.get("fixture/fail").definition.requiresApproval, requireApproval ?? true);
+    const runner = new ToolRunner({ async select() {
+      return { action: "tool", name: "fixture/echo", input: { message: "ok" }, reason: "Test effective policy" };
+    } }, registry);
+    const result = await runner.run("Echo");
+    assert.equal(result.diagnostics.status, requireApproval === false ? "denied" : "success");
+    assert.equal(result.diagnostics.executionAttempted, requireApproval !== false);
+  }
+});
+
+test("approval overrides reject misspelled, disabled, and non-boolean entries", async (t) => {
+  const dir = await temporaryDirectory(t);
+  const path = join(dir, "aira.mcp.json");
+  for (const toolApproval of [{ typo: false }, { fail: false }, { echo: "false" }, { echo: null }, []]) {
+    await writeFile(path, JSON.stringify({ servers: [{ ...server, toolApproval }] }));
+    await assert.rejects(loadMcpConfig(path));
+  }
+  await writeFile(path, JSON.stringify({ servers: [{ ...server, toolApproval: { echo: false } }] }));
+  assert.deepEqual((await loadMcpConfig(path))[0].toolApproval, { echo: false });
+  const registry = new ToolRegistry();
+  await assert.rejects(new McpSession().start([{ ...server, command: "does-not-exist", toolApproval: { typo: false } }], registry), /Invalid approval override/);
+  assert.deepEqual(registry.list(), []);
 });
