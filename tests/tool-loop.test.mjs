@@ -96,6 +96,21 @@ test("oversized results are omitted whole and no further selection runs", async 
   assert.match(result.context, /executionAttempted=true/);
 });
 
+test("a failed step's context always carries the corrective-retry instruction", async () => {
+  const { loop } = setup([read({ path: "README.md" })], async () => ({
+    success: false,
+    output: null,
+    error: 'Call "snapshot" first to get a current ref before retrying "click".',
+  }));
+  const result = await loop.run("Click something");
+  assert.equal(result.stopReason, "failed");
+  assert.match(result.context, /Call \\"snapshot\\" first/);
+  assert.match(
+    result.context,
+    /offer to retry with that correction on their next message/,
+  );
+});
+
 test("the budget is cumulative, preserves earlier evidence, and includes notices", async () => {
   const contexts = [];
   const runner = { async run(prompt, history, context) {

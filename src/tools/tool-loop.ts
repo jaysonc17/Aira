@@ -173,6 +173,11 @@ export class ToolLoop {
         "A successful tool response may be only a hint, not the requested information.",
         "If evaluation failed or was interrupted, evidence sufficiency is unknown.",
         "Answer using the evidence obtained; explain any remaining gaps. Do not claim unfinished work is complete.",
+        "If a failed step's error names a specific corrective next step " +
+          "(e.g. \"call snapshot first\"), tell the user what happened and " +
+          "offer to retry with that correction on their next message, " +
+          "rather than telling them to complete the action manually — " +
+          "the tool can still perform it once retried with the correction.",
       ].join("\n\n");
 
       return {
