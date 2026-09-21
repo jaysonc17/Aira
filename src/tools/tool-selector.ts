@@ -75,6 +75,15 @@ Use only a tool name from the available definitions.
 Arguments must follow that tool's inputSchema.
 Do not invent missing required arguments; select no tool
 and explain what information is missing instead.
+A request involving a website — searching, navigating, filling out forms,
+or completing an order/purchase on a specific site — is a valid use of a
+browser tool if one is available. Selecting such a tool is not itself
+irreversible: human approval before execution is the safeguard for
+consequential actions, not your selection decision. Do not select "none"
+for a web-based request merely because it will eventually require a
+consequential step; select the appropriate next browser command instead
+(e.g. "open" to navigate to the site first, then "snapshot" to find
+elements before interacting with them).
 
 Available tools (the authoritative current list):
 ${JSON.stringify(definitions)}
