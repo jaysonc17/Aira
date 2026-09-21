@@ -111,11 +111,15 @@ These diagnostics are separate from the tool context supplied to the model.
 It returns a UTC timestamp and local time for the selected time zone,
 defaulting to UTC when no time zone is supplied.
 
-A second built-in tool, `browser`, is registered by default if the
-`llm-browser` CLI is found on `PATH` at startup; otherwise Aira prints a
-`[Tools] llm-browser CLI not found on PATH; the browser tool will not be
-registered.` warning and starts without it. Unlike `current_time`, `browser`
-always requires approval.
+Two more built-in tools, `browser` and `web_search`, are registered by
+default if the `llm-browser` CLI is found on `PATH` at startup; otherwise
+Aira prints a `[Tools] llm-browser CLI not found on PATH; the browser and
+web_search tools will not be registered.` warning and starts without them.
+Unlike `current_time`, `browser`'s consequential commands (navigation,
+`click`, `fill`, `type`, `select`, `press`, etc.) require approval; its
+read-only commands (`get`, `is`, `extract`, `read`, `snapshot`, `screenshot`)
+do not. `web_search` never requires approval — it only reads a search
+engine's results page.
 
 ### Browser automation
 
@@ -125,8 +129,9 @@ interpolation. The session persists across tool
 calls, within and across conversation turns, until a `close` command ends it.
 This is Aira's first tool with real-world, hard-to-undo side effects: `click`,
 `fill`, `type`, `select`, and `press` can submit forms or complete a purchase.
-Because of that, `browser` always requires approval regardless of any server
-or per-tool override — see "Tool approval" below.
+Because of that, `browser`'s consequential commands always require approval
+regardless of any server or per-tool override, while its read-only commands
+never do — see "Tool approval" below.
 
 The tool exposes a single JSON input shape, `{ command, ...args }`, validated
 against a schema keyed on `command` so each command's exact required
@@ -162,6 +167,20 @@ Startup availability is checked by running `llm-browser --version`; only an
 registration — any other startup failure still registers the tool, so
 misconfiguration surfaces through a normal failed tool call rather than
 being silently hidden.
+
+### Web search
+
+`web_search` wraps the `llm-browser search <engine> <query>` shortcut for
+plain research lookups (`google`, `bing`, `duckduckgo`/`ddg`, `reddit`,
+`hn`, `github`) without the `open` + `snapshot` round trip `browser` needs.
+It shares `browser`'s underlying persistent session (the same `llm-browser`
+daemon), so a prior `browser close` ends it too, and a later `browser` call
+can pick up the page it leaves open. It is read-only and never requires
+approval. Input is `{ engine, query, json?, pages? }`: `json` returns a
+`{title, url, snippet}` array instead of a snapshot (only for `google`,
+`bing`, `duckduckgo`, `ddg`); `pages` (1-5, requires `json`, `google`/`bing`
+only) merges multiple result pages into one deduped array. Registration
+follows the same `llm-browser` PATH check as `browser`.
 
 ### Evidence evaluation regression checks
 

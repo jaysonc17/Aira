@@ -90,6 +90,10 @@ keyed on a `command` field (open/click/fill/type/get/extract/snapshot/... — se
 full list) so Ajv validates each command's exact required arguments, rather than accepting a loose
 argument bag. `screenshot` always forces the CLI's `--stdout` flag internally and never accepts a
 model-supplied file path, so it can't be used to write to an arbitrary filesystem location.
+`web-search-tool.ts` is a second `llm-browser`-backed built-in tool, wrapping just the CLI's
+`search <engine> <query>` shortcut (google/bing/duckduckgo/ddg/reddit/hn/github) for plain research
+lookups; it never requires approval and shares `browser`'s persistent session. Registered alongside
+`browser` behind the same `isBrowserCliAvailable()` PATH check.
 MCP-provided tools (`mcp-connection.ts`, `mcp-session.ts`, `mcp-config.ts`) are loaded from
 `aira.mcp.json` at startup and namespaced by server (e.g. `local/echo`, `github/get_file_contents`).
 Approval policy for MCP servers defaults to per-call confirmation; a server config can set
