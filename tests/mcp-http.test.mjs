@@ -42,11 +42,14 @@ test("GitHub configuration loads and forwards authentication and read-only heade
   assert.ok(calls.includes("tools/call"));
 });
 
-test("missing authentication fails before a remote request", async (t) => {
+test("missing authentication skips the server instead of failing startup", async (t) => {
   t.mock.method(globalThis, "fetch", () => assert.fail("Must not connect"));
   const session = new McpSession();
-  await assert.rejects(session.start([{
+  t.after(() => session.close());
+  const registry = new ToolRegistry();
+  await session.start([{
     name: "github", url: "https://api.githubcopilot.com/mcp/",
     authTokenEnv: "AIRA_MISSING_TEST_TOKEN", tools: ["get_file_contents"],
-  }], new ToolRegistry()), /Missing MCP authentication/);
+  }], registry);
+  assert.equal(registry.list().length, 0);
 });

@@ -27,9 +27,10 @@ export class McpSession {
         if (server.authTokenEnv) {
           const token = process.env[server.authTokenEnv];
           if (!token?.trim()) {
-            throw new Error(
-              `Missing MCP authentication environment variable: ${server.authTokenEnv}`,
+            console.warn(
+              `[MCP] ${server.authTokenEnv} is not set; skipping MCP server "${server.name}" and its tools.`,
             );
+            continue;
           }
           if (
             Object.keys(headers).some(

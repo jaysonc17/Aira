@@ -496,9 +496,11 @@ JavaScript event loop.
 
 These commands use `AIRA_GITHUB_TOKEN` if supplied, otherwise your existing
 `gh auth login` credential. Tokens remain in process memory and are not printed
-or written to configuration. Ordinary `npm start` requires `AIRA_GITHUB_TOKEN`
-to be set when the GitHub server is enabled. The application does not load `.env`
-files automatically.
+or written to configuration. `npm start` does not require `AIRA_GITHUB_TOKEN`:
+if it is unset while the GitHub server is configured, that server is skipped
+(with a console warning) and startup continues with any other configured
+servers and built-in tools. The application does not load `.env` files
+automatically.
 
 Try `/tools`, then “Read README.md from Itspigrain/fraud-platform” or
 “List branches in Itspigrain/fraud-platform”. Repository names belong in the

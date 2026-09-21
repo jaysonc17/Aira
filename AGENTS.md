@@ -32,8 +32,10 @@ npm run check:approval                                   # exercise the approval
 npm run check:github -- <owner/repo> [--model path] [--loop] [--evaluate path]  # GitHub MCP integration checks
 ```
 
-`npm run check:github` and `npm start` with the GitHub server configured require `AIRA_GITHUB_TOKEN`
-(or an existing `gh auth login` session). `aira.mcp.json` (git-ignored) configures MCP servers on
+`npm run check:github` requires `AIRA_GITHUB_TOKEN` (or an existing `gh auth login` session).
+`npm start` with the GitHub server configured does not: if `AIRA_GITHUB_TOKEN` is unset, that
+server is skipped with a console warning and the rest of Aira (including any other configured
+MCP servers) still starts normally. `aira.mcp.json` (git-ignored) configures MCP servers on
 startup; copy `aira.mcp.example.json` or `aira.mcp.github.example.json` to try one.
 
 ## Architecture
