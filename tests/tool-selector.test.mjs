@@ -93,6 +93,71 @@ test("rejects malformed decisions and unknown tools", async () => {
   }
 });
 
+test("normalizes an action field that reuses the tool's own name", async () => {
+  const selector = new ToolSelector({
+    async generate() {
+      return JSON.stringify({
+        action: "current_time",
+        name: "current_time",
+        input: { timeZone: "UTC" },
+        reason: "The user needs the current time",
+      });
+    },
+  }, createRegistry());
+
+  assert.deepEqual(await selector.select("What time is it?"), {
+    action: "tool",
+    name: "current_time",
+    input: { timeZone: "UTC" },
+    reason: "The user needs the current time",
+  });
+});
+
+test("normalizes a tool-named action even when name is omitted", async () => {
+  const selector = new ToolSelector({
+    async generate() {
+      return JSON.stringify({
+        action: "current_time",
+        input: { timeZone: "UTC" },
+        reason: "The user needs the current time",
+      });
+    },
+  }, createRegistry());
+
+  assert.deepEqual(await selector.select("What time is it?"), {
+    action: "tool",
+    name: "current_time",
+    input: { timeZone: "UTC" },
+    reason: "The user needs the current time",
+  });
+});
+
+test("does not normalize when action and name name different tools", async () => {
+  const registry = createRegistry();
+  registry.register({
+    definition: {
+      name: "other_tool",
+      description: "Another tool",
+      inputSchema: { type: "object" },
+    },
+    async execute() {
+      assert.fail("Selection must not execute a tool");
+    },
+  });
+  const selector = new ToolSelector({
+    async generate() {
+      return JSON.stringify({
+        action: "current_time",
+        name: "other_tool",
+        input: {},
+        reason: "Ambiguous",
+      });
+    },
+  }, registry);
+
+  assert.equal((await selector.select("What time is it?")).action, "invalid");
+});
+
 test("propagates model failures so callers can handle them", async () => {
   const failure = new Error("Model unavailable");
   const selector = new ToolSelector({

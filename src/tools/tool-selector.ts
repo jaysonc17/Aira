@@ -144,9 +144,24 @@ ${JSON.stringify(context)}
       };
     }
 
+    // Some models put the tool's own name in "action" instead of the
+    // literal string "tool" (e.g. {"action":"browser","name":"browser",...}).
+    // The intent is unambiguous when "name" agrees, so normalize it.
+    const normalizedAction =
+      typeof parsed.action === "string" &&
+      parsed.action !== "tool" &&
+      definitions.some((definition) => definition.name === parsed.action) &&
+      (parsed.name === undefined || parsed.name === parsed.action)
+        ? "tool"
+        : parsed.action;
+    const normalizedName =
+      normalizedAction === "tool" && parsed.name === undefined
+        ? parsed.action
+        : parsed.name;
+
     if (
-      parsed.action !== "tool" ||
-      typeof parsed.name !== "string" ||
+      normalizedAction !== "tool" ||
+      typeof normalizedName !== "string" ||
       !isObject(parsed.input) ||
       !Object.keys(parsed).every((key) =>
         ["action", "name", "input", "reason"].includes(key),
@@ -155,14 +170,14 @@ ${JSON.stringify(context)}
       return invalid("Tool selector returned an invalid decision");
     }
 
-    if (!definitions.some((definition) => definition.name === parsed.name)) {
-      return invalid(`Tool selector chose an unknown tool: ${parsed.name}`);
+    if (!definitions.some((definition) => definition.name === normalizedName)) {
+      return invalid(`Tool selector chose an unknown tool: ${normalizedName}`);
     }
 
     // Tool-specific argument validation happens before execution.
     return {
       action: "tool",
-      name: parsed.name,
+      name: normalizedName,
       input: parsed.input,
       reason: parsed.reason,
     };
