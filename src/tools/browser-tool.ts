@@ -263,10 +263,12 @@ and across turns until "close" is used. Actions have real-world effects:
 submitting forms, clicking checkout/purchase controls, and similar
 state-changing actions cannot be undone by this tool.
 
-Prefer read-only commands (get, extract, snapshot, read, is) to gather
-information. Treat click, fill, type, select, and press as consequential:
-only use them for the specific action described in your reasoning, never
-speculatively. Each call requires separate human approval.
+Prefer read-only commands (get, extract, snapshot, read, is, screenshot)
+to gather information; these do not require human approval. Treat every
+other command (open, close, navigation, click, fill, type, select, press,
+hover, focus, scroll, wait, etc.) as consequential: only use them for the
+specific action described in your reasoning, never speculatively. Each
+consequential call requires separate human approval.
 
 Supported commands: open, close, back, forward, reload, click, dblclick,
 type, fill, press, hover, focus, select, scroll, scrollintoview, wait,
@@ -307,6 +309,16 @@ const NAVIGATION_COMMANDS = new Set([
   "close",
 ]);
 
+/** Commands that only observe page state and cannot have side effects. */
+const READ_ONLY_COMMANDS = new Set([
+  "snapshot",
+  "get",
+  "is",
+  "extract",
+  "read",
+  "screenshot",
+]);
+
 export class BrowserTool implements Tool {
   private snapshotTakenSinceNavigation = false;
 
@@ -319,7 +331,8 @@ export class BrowserTool implements Tool {
   readonly definition: ToolDefinition = {
     name: "browser",
     description: DESCRIPTION,
-    requiresApproval: true,
+    requiresApproval: (input) =>
+      !READ_ONLY_COMMANDS.has(String(input.command)),
     inputSchema: {
       type: "object",
       properties: { command: { type: "string" } },

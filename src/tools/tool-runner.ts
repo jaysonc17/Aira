@@ -127,8 +127,12 @@ export class ToolRunner {
           };
         } else {
           stage = "approval";
+          const requiresApproval =
+            typeof tool.definition.requiresApproval === "function"
+              ? tool.definition.requiresApproval(selection.input)
+              : tool.definition.requiresApproval;
           const approved =
-            !tool.definition.requiresApproval ||
+            !requiresApproval ||
             (this.approve !== undefined &&
               (await abortable(
                 () =>

@@ -289,8 +289,11 @@ calls. Approval waits count against the step and loop deadlines.
 Set `"requireApproval": false` on a configured server to enable automatic
 execution of its allowlisted tools. The read-only GitHub and echo examples
 explicitly use this setting. A server's own annotations do not grant approval;
-the policy is controlled locally. The built-in current-time tool remains automatic;
-the built-in browser tool always requires approval and has no override.
+the policy is controlled locally. The built-in current-time tool remains automatic.
+The built-in browser tool decides per-call: its read-only commands (`get`,
+`is`, `extract`, `read`, `snapshot`, `screenshot`) run automatically, while
+every other command (navigation, `click`, `fill`, `type`, `select`, `press`,
+etc.) always requires approval and has no override.
 
 Use `toolApproval` to override individual tools by their remote names (without
 the server prefix). For example, these fields on a server configuration allow

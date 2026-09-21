@@ -13,9 +13,13 @@ function fakeRunner(calls, response = { stdout: "ok", stderr: "" }) {
   };
 }
 
-test("definition requires approval and exposes a per-command schema", () => {
+test("definition requires approval for consequential commands but not read-only ones, and exposes a per-command schema", () => {
   const tool = new BrowserTool();
-  assert.equal(tool.definition.requiresApproval, true);
+  assert.equal(typeof tool.definition.requiresApproval, "function");
+  assert.equal(tool.definition.requiresApproval({ command: "open" }), true);
+  assert.equal(tool.definition.requiresApproval({ command: "type" }), true);
+  assert.equal(tool.definition.requiresApproval({ command: "snapshot" }), false);
+  assert.equal(tool.definition.requiresApproval({ command: "get" }), false);
   const validator = new ToolInputValidator();
   assert.equal(
     validator.validate(tool.definition, { command: "open", url: "https://example.com" }),

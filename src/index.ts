@@ -63,7 +63,7 @@ async function main() {
           ? requestToolApproval(rl, request, signal)
           : Promise.resolve(false),
     ),
-    3,
+    6,
     16_000,
     new LlmToolResultEvaluator(modelRegistry.get("fast"), toolRegistry),
     ({ step, phase, state }) => {

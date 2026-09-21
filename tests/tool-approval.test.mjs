@@ -60,6 +60,51 @@ test("approval waits expire without execution", async () => {
   assert.equal(calls(), 0);
 });
 
+test("a function-valued requiresApproval is evaluated per-call against the input", async () => {
+  let calls = 0;
+  const registry = new ToolRegistry();
+  registry.register({
+    definition: {
+      name: "action",
+      description: "Test",
+      requiresApproval: (input) => input.command !== "readonly",
+      inputSchema: {
+        type: "object",
+        properties: { command: { type: "string" } },
+        required: ["command"],
+      },
+    },
+    async execute(args) {
+      calls++;
+      return { success: true, output: args };
+    },
+  });
+
+  const runReadonly = new ToolRunner(
+    { async select() {
+      return { action: "tool", name: "action", input: { command: "readonly" }, reason: "Test" };
+    } },
+    registry,
+    undefined,
+    async () => assert.fail("Must not ask for a read-only command"),
+  );
+  const readonlyResult = await runReadonly.run("Test");
+  assert.equal(readonlyResult.diagnostics.status, "success");
+  assert.equal(calls, 1);
+
+  const runConsequential = new ToolRunner(
+    { async select() {
+      return { action: "tool", name: "action", input: { command: "write" }, reason: "Test" };
+    } },
+    registry,
+    undefined,
+    async () => false,
+  );
+  const deniedResult = await runConsequential.run("Test");
+  assert.equal(deniedResult.diagnostics.status, "denied");
+  assert.equal(calls, 1);
+});
+
 test("terminal approval accepts only yes and handles closed input", async () => {
   for (const answer of ["yes", "no", "", "y", null]) {
     const input = new PassThrough();

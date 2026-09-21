@@ -74,9 +74,12 @@ answer evaluation; `memory` (Qwen3-14B) handles summarization and reranking. All
 point at the same local MLX server; swapping models means editing `ModelRegistry`.
 
 **Tools** (`src/tools/`): `Tool` (`tool.ts`) is the common interface; `ToolRunner` enforces approval
-uniformly for any tool (built-in or MCP) whose `definition.requiresApproval` is `true` — it is not
-special-cased per source. `current-time-tool.ts` is a built-in tool that runs without approval.
-`browser-tool.ts` is a built-in tool that always requires approval: it shells out to the external
+uniformly for any tool (built-in or MCP) whose `definition.requiresApproval` is `true`, or whose
+`requiresApproval` function returns `true` for the given input — it is not special-cased per
+source. `current-time-tool.ts` is a built-in tool that runs without approval.
+`browser-tool.ts` is a built-in tool that requires approval per-command (read-only commands like
+`snapshot`/`get`/`is`/`extract`/`read`/`screenshot` run automatically; everything else always
+requires approval, with no override): it shells out to the external
 `llm-browser` CLI (`child_process.execFile`, no shell interpolation) to drive a persistent
 SeleniumBase browser session. `isBrowserCliAvailable()` runs `llm-browser --version` at startup
 (`src/index.ts`); only `ENOENT` skips registration (with a console warning) — any other failure
