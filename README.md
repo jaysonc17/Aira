@@ -110,7 +110,58 @@ These diagnostics are separate from the tool context supplied to the model.
 
 It returns a UTC timestamp and local time for the selected time zone,
 defaulting to UTC when no time zone is supplied.
-Only the read-only current-time tool is registered by default.
+
+A second built-in tool, `browser`, is registered by default if the
+`llm-browser` CLI is found on `PATH` at startup; otherwise Aira prints a
+`[Tools] llm-browser CLI not found on PATH; the browser tool will not be
+registered.` warning and starts without it. Unlike `current_time`, `browser`
+always requires approval.
+
+### Browser automation
+
+`browser` drives a persistent local browser session through the `llm-browser`
+CLI (SeleniumBase CDP mode), invoked as a child process with no shell
+interpolation. The session persists across tool
+calls, within and across conversation turns, until a `close` command ends it.
+This is Aira's first tool with real-world, hard-to-undo side effects: `click`,
+`fill`, `type`, `select`, and `press` can submit forms or complete a purchase.
+Because of that, `browser` always requires approval regardless of any server
+or per-tool override — see "Tool approval" below.
+
+The tool exposes a single JSON input shape, `{ command, ...args }`, validated
+against a schema keyed on `command` so each command's exact required
+arguments are enforced by Ajv before anything runs (for example, `fill`
+without `text` fails validation, not execution). Supported commands: `open`,
+`close`, `back`, `forward`, `reload`, `click`, `dblclick`, `type`, `fill`,
+`press`, `hover`, `focus`, `select`, `scroll`, `scrollintoview`, `wait`,
+`get`, `is`, `extract`, `read`, `snapshot`, `screenshot`. `snapshot` returns
+an accessibility-tree view with `@eN` element references or CSS selectors,
+intended to be read before `click`/`fill`/etc. target a specific element.
+
+Commands not exposed in this first pass: 2FA/credential commands (`mfa-code`,
+`enter-mfa`), captcha-bypass commands (`click-captcha`, `solve-captcha`),
+cookie/storage management, and OS-level pointer control (`--gui`,
+`gui-hover-click`). `screenshot` always forces the CLI's `--stdout` flag
+internally and ignores any model-supplied output path, so it returns a
+`data:image/...;base64,...` URI rather than ever writing a file to disk.
+
+The tool's description instructs the model to prefer read-only commands
+(`get`, `extract`, `snapshot`, `read`, `is`) for gathering information and to
+treat state-changing commands as consequential, but this is model guidance,
+not an enforced restriction — the per-call approval prompt is the actual
+control. A failed command (e.g. an element not found) returns a failed
+`ToolResult` with the CLI's stderr as the error message; it does not throw,
+and does not imply the browser session itself is in an unknown state.
+
+This integration does not yet include a grocery-shopping (or other
+site-specific) automation flow; that would be built as a separate use case
+on top of this general-purpose tool.
+
+Startup availability is checked by running `llm-browser --version`; only an
+`ENOENT` (binary not found) is treated as "not installed" and skips
+registration — any other startup failure still registers the tool, so
+misconfiguration surfaces through a normal failed tool call rather than
+being silently hidden.
 
 ### Evidence evaluation regression checks
 
@@ -238,7 +289,8 @@ calls. Approval waits count against the step and loop deadlines.
 Set `"requireApproval": false` on a configured server to enable automatic
 execution of its allowlisted tools. The read-only GitHub and echo examples
 explicitly use this setting. A server's own annotations do not grant approval;
-the policy is controlled locally. The built-in current-time tool remains automatic.
+the policy is controlled locally. The built-in current-time tool remains automatic;
+the built-in browser tool always requires approval and has no override.
 
 Use `toolApproval` to override individual tools by their remote names (without
 the server prefix). For example, these fields on a server configuration allow

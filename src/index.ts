@@ -35,6 +35,7 @@ import { ToolRunner } from "./tools/tool-runner.js";
 import { LlmToolResultEvaluator } from "./tools/tool-result-evaluator.js";
 import { ToolLoop } from "./tools/tool-loop.js";
 import { CurrentTimeTool } from "./tools/current-time-tool.js";
+import { BrowserTool, isBrowserCliAvailable } from "./tools/browser-tool.js";
 import { loadMcpConfig } from "./tools/mcp-config.js";
 import { McpSession } from "./tools/mcp-session.js";
 import { requestToolApproval } from "./tools/tool-approval.js";
@@ -44,6 +45,13 @@ async function main() {
 
   const toolRegistry = new ToolRegistry();
   toolRegistry.register(new CurrentTimeTool());
+  if (await isBrowserCliAvailable()) {
+    toolRegistry.register(new BrowserTool());
+  } else {
+    console.warn(
+      "[Tools] llm-browser CLI not found on PATH; the browser tool will not be registered.",
+    );
+  }
 
   const toolRunner = new ToolLoop(
     new ToolRunner(

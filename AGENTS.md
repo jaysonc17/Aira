@@ -73,15 +73,25 @@ routing, tool selection, and memory tasks; `reasoning` (Qwen3-32B) handles escal
 answer evaluation; `memory` (Qwen3-14B) handles summarization and reranking. All roles currently
 point at the same local MLX server; swapping models means editing `ModelRegistry`.
 
-**Tools** (`src/tools/`): `Tool` (`tool.ts`) is the common interface. Built-in tools (e.g.
-`current-time-tool.ts`) run without approval. MCP-provided tools (`mcp-connection.ts`,
-`mcp-session.ts`, `mcp-config.ts`) are loaded from `aira.mcp.json` at startup and namespaced by
-server (e.g. `local/echo`, `github/get_file_contents`). Approval policy defaults to per-call
-confirmation; a server config can set `"requireApproval": false` and per-tool
-`toolApproval` overrides — precedence is per-tool override > server `requireApproval` > default
-`true`. The approval gate lives in `ToolRunner`, not in `Tool.execute` — any new caller invoking
-tools directly must enforce approval itself. GitHub access is read-only and allowlisted to
-`get_file_contents`, `list_branches`, `list_commits`, `get_commit`.
+**Tools** (`src/tools/`): `Tool` (`tool.ts`) is the common interface; `ToolRunner` enforces approval
+uniformly for any tool (built-in or MCP) whose `definition.requiresApproval` is `true` — it is not
+special-cased per source. `current-time-tool.ts` is a built-in tool that runs without approval.
+`browser-tool.ts` is a built-in tool that always requires approval: it shells out to the external
+`llm-browser` CLI (`child_process.execFile`, no shell interpolation) to drive a persistent
+SeleniumBase browser session. `isBrowserCliAvailable()` runs `llm-browser --version` at startup
+(`src/index.ts`); only `ENOENT` skips registration (with a console warning) — any other failure
+still registers the tool so it fails per-call instead of silently. Its single `browser` tool definition uses a draft-07 `oneOf` schema
+keyed on a `command` field (open/click/fill/type/get/extract/snapshot/... — see the file for the
+full list) so Ajv validates each command's exact required arguments, rather than accepting a loose
+argument bag. `screenshot` always forces the CLI's `--stdout` flag internally and never accepts a
+model-supplied file path, so it can't be used to write to an arbitrary filesystem location.
+MCP-provided tools (`mcp-connection.ts`, `mcp-session.ts`, `mcp-config.ts`) are loaded from
+`aira.mcp.json` at startup and namespaced by server (e.g. `local/echo`, `github/get_file_contents`).
+Approval policy for MCP servers defaults to per-call confirmation; a server config can set
+`"requireApproval": false` and per-tool `toolApproval` overrides — precedence is per-tool override
+> server `requireApproval` > default `true`. The approval gate lives in `ToolRunner`, not in
+`Tool.execute` — any new caller invoking tools directly must enforce approval itself. GitHub access
+is read-only and allowlisted to `get_file_contents`, `list_branches`, `list_commits`, `get_commit`.
 
 **Cancellation**: a single `AbortController` in `src/index.ts` is wired to SIGINT/SIGTERM and
 threaded through model requests, tool execution, and MCP calls via `cancellation.ts`'s
