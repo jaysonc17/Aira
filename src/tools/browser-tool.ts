@@ -302,6 +302,16 @@ text. json returns ref-addressable, machine-parseable data so you can
 reason over each result programmatically instead of guessing from the
 rendered text tree. Use "get" with target "text" on a specific result's
 ref, or "extract", to read one product's detail page once opened.
+
+Many retail sites carry a large global navigation (nested category
+mega-menus) on every page. A full-page "snapshot" there can return
+many thousands of characters, which slows down and can time out later
+steps that reuse it. When you only need one specific element (e.g. an
+"Add to cart" button on a product page), scope the snapshot with
+"selector" to a narrower container likely to hold it (e.g. "main",
+"#content", or a product/cart-specific container) instead of snapshotting
+the whole page. Only fall back to an unscoped snapshot if a scoped one
+returns nothing useful.
 `.trim();
 
 /** Matches an unresolved snapshot element ref, e.g. "e8" or "@e8". */
