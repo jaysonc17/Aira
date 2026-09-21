@@ -282,6 +282,20 @@ value snapshot returns (e.g. e8), passed as "@e8" (with the "@" prefix)
 in the selector argument, not the bare ref. Ref selectors are rejected
 by this tool if no "snapshot" has been called since the last navigation
 (open/back/forward/reload/close), since refs from a prior page are stale.
+
+To search for a product on a specific website (not a general web
+search), use this loop: "open" the site (its homepage or a known
+search/category URL), "snapshot" with interactive true to find the
+search box's ref, "fill" the query into that ref (fill clears any
+existing text first; type does not), then "press" Enter. After the
+results load, "snapshot" again with interactive false (or omitted),
+compact true, and json true: product names, prices, and other plain
+result text are not interactive elements, so setting interactive true
+here would drop them, same as it would drop a search result's snippet
+text. json returns ref-addressable, machine-parseable data so you can
+reason over each result programmatically instead of guessing from the
+rendered text tree. Use "get" with target "text" on a specific result's
+ref, or "extract", to read one product's detail page once opened.
 `.trim();
 
 /** Matches an unresolved snapshot element ref, e.g. "e8" or "@e8". */
