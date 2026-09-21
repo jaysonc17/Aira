@@ -6,6 +6,8 @@ export const CLI_HELP = `Commands:
   /session save <name>       Save chat and summary under a new name.
   /session load <name>       Replace chat context with a saved conversation.
   /session delete <name>     Delete one saved file; keep active chat and memory.
+  /investigate <owner/repo> <question>  Gather bounded repository evidence and answer.
+  /plan <owner/repo> <question>  Propose up to three read-only investigation steps.
   /tools                    List available tools and their approval requirements.
   /tools <name>             Show a tool's description and input schema.
   /memories                 Inspect stored long-term memories.

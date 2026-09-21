@@ -1,3 +1,5 @@
+import { RepositoryInvestigator } from "./tools/repository-investigator.js";
+import { RepositoryPlanner } from "./tools/repository-planner.js";
 import {
   ConversationSessions,
   handleSessionCommand,
@@ -91,6 +93,10 @@ async function main() {
     summarizer: conversationSummarizer,
   });
 
+  const repositoryPlanner = new RepositoryPlanner(
+    modelRegistry.get("fast"),
+    toolRegistry,
+  );
   const sessions = new ConversationSessions();
   const longTermMemory = new LongTermMemory();
 
@@ -170,6 +176,59 @@ async function main() {
       }
 
       try {
+        if (/^\/investigate(?:\s|$)/.test(prompt)) {
+          const match = /^\/investigate\s+(\S+)\s+([\s\S]+)$/.exec(prompt);
+          if (!match) {
+            console.log("Usage: /investigate <owner/repository> <question>");
+          } else {
+            console.log("Planning and gathering repository evidence...");
+            const investigator = new RepositoryInvestigator(
+              modelRegistry.get("fast"),
+              toolRegistry,
+              (request, signal) =>
+                process.stdin.isTTY
+                  ? requestToolApproval(rl, request, signal)
+                  : Promise.resolve(false),
+              ({ step, phase, state }) =>
+                console.log(
+                  `[Investigation] step=${step} phase=${phase} state=${state}`,
+                ),
+            );
+            const result = await investigator.investigate(
+              match[1]!,
+              match[2]!,
+              cancellation.signal,
+            );
+            console.log(
+              `[Investigation] stop=${result.evidence.stopReason} steps=${result.evidence.steps.length}`,
+            );
+            console.log(result.answer);
+          }
+          rl.prompt();
+          continue;
+        }
+        if (/^\/plan(?:\s|$)/.test(prompt)) {
+          const match = /^\/plan\s+(\S+)\s+([\s\S]+)$/.exec(prompt);
+          if (!match) {
+            console.log("Usage: /plan <owner/repository> <question>");
+          } else {
+            console.log("Planning repository investigation...");
+            const plan = await repositoryPlanner.plan(
+              match[1]!,
+              match[2]!,
+              cancellation.signal,
+            );
+            console.log(`Proposed investigation: ${plan.repository}`);
+            for (const [index, step] of plan.steps.entries()) {
+              console.log(`${index + 1}. ${step.question} [${step.tool}]`);
+            }
+            console.log(
+              "Plan only: no repository tools executed. Proposed steps are not verified findings.",
+            );
+          }
+          rl.prompt();
+          continue;
+        }
         const sessionResponse = await handleSessionCommand(
           prompt,
           sessions,

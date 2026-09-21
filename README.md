@@ -189,6 +189,44 @@ authority. Earlier runs failed the forged-policy case. See
 `evaluations/README.md` for results and limits; these two cases do not establish
 general instruction resistance.
 
+### Repository investigation planning
+
+```text
+/plan Itspigrain/fraud-platform How does event ingestion lead to a fraud alert?
+```
+
+This first investigation step proposes one to three evidence questions using
+registered GitHub read tools. It makes one local model request with a 60-second
+deadline, validates the plan, and executes no repository tools. Plans are not
+findings, approvals, or guarantees that the proposed evidence exists. Invalid
+plans fail without execution; they are not added to chat or long-term memory.
+The current supported names are `github/get_file_contents`, `github/list_branches`,
+`github/list_commits`, and `github/get_commit`.
+
+Use `/investigate <owner/repository> <question>` to plan, gather evidence, and
+produce an answer. It permits up to six selection steps and 24,000 characters of
+tool context, with a 300-second overall deadline (planning remains limited to
+60 seconds and gathering to 180 seconds). Each step uses the normal validation,
+approval, duplicate prevention, and cancellation checks. Only the supported GitHub
+read tools are available, and calls targeting another owner/repository are rejected.
+A plan guides selection but is not evidence or an execution script.
+
+The final answer is instructed to cite observed file paths and explain gaps;
+citation correctness is not yet mechanically verified. If gathering stops for
+any reason other than `sufficient`, code prefixes the answer with an explicit
+incomplete notice and the stop reason. A sufficient model assessment is still
+not proof that the answer is correct. This command does not
+run the separate answer evaluator. Investigation commands currently do not write
+chat or long-term memory. Missing-path failures stop gathering; recovery and live
+multi-file investigation checks remain outstanding in this milestone. Normal
+conversation continues to use the existing three-step loop.
+
+Deterministic investigation tests trace an event controller into a rule service,
+verify that both file results reach answer generation, enforce the six-read
+limit when evidence remains incomplete, and bound an unresponsive final answer
+with the overall deadline. These use synthetic sources and scripted model
+responses; live repository behavior and answer accuracy are separate checks.
+
 ### Tool approval
 
 MCP tools require per-call approval by default. After arguments pass validation,

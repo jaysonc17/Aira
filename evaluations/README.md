@@ -164,3 +164,35 @@ reasons remain in diagnostics and are absent from selection and answer context.
 Because explanation isolation and selector instructions changed together, this
 run does not isolate their individual effects. Raw tool output still reaches
 models, and two passing cases are not a general instruction-resistance guarantee.
+
+## Live repository investigation, 2026-09-20
+
+Repository: `Itspigrain/fraud-platform`. Question: how event ingestion leads to a
+fraud alert, tracing source files and citing their paths. This run used the fast
+model and GitHub MCP with the existing read-only configuration.
+
+Outcome: **incomplete; milestone acceptance failed**. Planning succeeded but
+prioritized branch listing, root discovery, and commit history rather than a
+focused implementation trace. Gathering executed four calls:
+
+1. List branches.
+2. List root contents (`/`).
+3. Read `README.md`.
+4. Request `event/`.
+
+The next selection repeated the identical `event/` call. Duplicate prevention
+stopped it without a fifth execution (`stopReason: repeated`). All four evidence
+assessments requested continuation. No implementation source file was read.
+An independent metadata lookup confirmed the default branch is `master`; a
+lookup using `main` returned 404.
+
+The generated answer described the README's high-level event flow but framed it
+as an implementation trace. It did not clearly lead with the missing source
+inspection or repeated-call stop. It also assigned fraud alerts to an event-index
+pattern without inspecting storage implementation; that claim is unverified.
+This run does not satisfy source-grounded answer or multi-file tracing criteria.
+
+Next work: follow resolved paths in directory hints without repeating requests,
+focus planning on source discovery, and explicitly mark incomplete answers.
+Citation validation and recovery remain outstanding. No repository data was
+written and no conversation or long-term memory was saved by this check.

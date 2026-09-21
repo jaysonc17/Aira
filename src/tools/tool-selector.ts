@@ -55,6 +55,15 @@ file path, the task is NOT complete. Select the file-reading tool with that path
 For example: reading README.md returns "matching files: frontend/README.md".
 Your next decision must read frontend/README.md, keeping the same repository.
 Set input.path to "frontend/README.md" in that example, not "README.md".
+Directory hints follow the same rule. If requesting a short directory name
+returns full matching paths, use a returned full path in the next input.path.
+For example, requesting handlers/ returns src/server/handlers/ and tests/handlers/:
+inspect src/server/handlers/ to trace implementation, then read relevant files.
+A package name mentioned in documentation is not necessarily a root directory.
+Discover its full path from listings or matching-path hints rather than guessing.
+When tracing implementation, documentation and listings locate code but do not
+replace reading source files. Request content, not metadata-only field filters,
+when you need to inspect the contents of a source file.
 The input arguments must match the next action described in your reason.
 Do not select "none" merely because the previous result lacks the requested content
 when an available tool can retrieve it. Select "none" after obtaining the content,
