@@ -270,8 +270,14 @@ speculatively. Each call requires separate human approval.
 
 Supported commands: open, close, back, forward, reload, click, dblclick,
 type, fill, press, hover, focus, select, scroll, scrollintoview, wait,
-get, is, extract, read, snapshot, screenshot. Use "snapshot" first to
-discover @eN element references or CSS selectors before interacting.
+get, is, extract, read, snapshot, screenshot.
+
+Always call "snapshot" (with --interactive) first to discover the actual
+element references before click/type/fill/select/hover/focus/press. Never
+guess a CSS selector (e.g. a form or container id like "#tsf") — it will
+fail after a 7-second wait if the element doesn't match. Use the "ref"
+value snapshot returns (e.g. e8), passed as "@e8" (with the "@" prefix)
+in the selector argument, not the bare ref.
 `.trim();
 
 export class BrowserTool implements Tool {
