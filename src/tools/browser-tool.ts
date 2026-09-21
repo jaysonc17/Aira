@@ -277,10 +277,39 @@ element references before click/type/fill/select/hover/focus/press. Never
 guess a CSS selector (e.g. a form or container id like "#tsf") — it will
 fail after a 7-second wait if the element doesn't match. Use the "ref"
 value snapshot returns (e.g. e8), passed as "@e8" (with the "@" prefix)
-in the selector argument, not the bare ref.
+in the selector argument, not the bare ref. Ref selectors are rejected
+by this tool if no "snapshot" has been called since the last navigation
+(open/back/forward/reload/close), since refs from a prior page are stale.
 `.trim();
 
+/** Matches an unresolved snapshot element ref, e.g. "e8" or "@e8". */
+const REF_SELECTOR_PATTERN = /^@?e\d+$/;
+
+/** Commands that target a specific element and so require a fresh snapshot ref. */
+const REF_GUARDED_COMMANDS = new Set([
+  "click",
+  "dblclick",
+  "type",
+  "fill",
+  "select",
+  "hover",
+  "focus",
+  "press",
+  "scrollintoview",
+]);
+
+/** Commands that navigate to a new page, invalidating any prior snapshot's refs. */
+const NAVIGATION_COMMANDS = new Set([
+  "open",
+  "back",
+  "forward",
+  "reload",
+  "close",
+]);
+
 export class BrowserTool implements Tool {
+  private snapshotTakenSinceNavigation = false;
+
   constructor(
     private readonly binary = "llm-browser",
     private readonly run: BrowserProcessRunner = (args, signal) =>
@@ -309,6 +338,23 @@ export class BrowserTool implements Tool {
       };
     }
 
+    if (
+      REF_GUARDED_COMMANDS.has(command) &&
+      typeof input.selector === "string" &&
+      REF_SELECTOR_PATTERN.test(input.selector) &&
+      !this.snapshotTakenSinceNavigation
+    ) {
+      return {
+        success: false,
+        output: null,
+        error:
+          `Selector "${input.selector}" looks like a snapshot element ref, ` +
+          `but no "snapshot" call has been made since the last navigation. ` +
+          `Call "snapshot" (with --interactive) first to get a current, ` +
+          `valid ref for this page before retrying "${command}".`,
+      };
+    }
+
     const args = buildArgs(command, input);
 
     try {
@@ -316,8 +362,13 @@ export class BrowserTool implements Tool {
         [...args, ...(command === "screenshot" ? ["--stdout"] : [])],
         signal,
       );
+      if (command === "snapshot") this.snapshotTakenSinceNavigation = true;
+      if (NAVIGATION_COMMANDS.has(command))
+        this.snapshotTakenSinceNavigation = false;
       return { success: true, output: stdout.trim() };
     } catch (error) {
+      if (NAVIGATION_COMMANDS.has(command))
+        this.snapshotTakenSinceNavigation = false;
       return {
         success: false,
         output: null,

@@ -116,6 +116,42 @@ test("the abort signal is forwarded to the process runner", async () => {
   assert.equal(calls[0].signal, controller.signal);
 });
 
+test("a ref-style selector is rejected without invoking the process runner until snapshot has run", async () => {
+  const calls = [];
+  const tool = new BrowserTool("llm-browser", fakeRunner(calls));
+  const result = await tool.execute({ command: "type", selector: "@e8", text: "hi" });
+  assert.equal(result.success, false);
+  assert.match(result.error, /snapshot/);
+  assert.equal(calls.length, 0);
+});
+
+test("a ref-style selector is allowed once snapshot has run since the last navigation", async () => {
+  const calls = [];
+  const tool = new BrowserTool("llm-browser", fakeRunner(calls));
+  await tool.execute({ command: "snapshot", interactive: true });
+  const result = await tool.execute({ command: "type", selector: "@e8", text: "hi" });
+  assert.equal(result.success, true);
+  assert.deepEqual(calls[1].args, ["type", "@e8", "hi"]);
+});
+
+test("navigating again invalidates a prior snapshot's refs", async () => {
+  const calls = [];
+  const tool = new BrowserTool("llm-browser", fakeRunner(calls));
+  await tool.execute({ command: "snapshot", interactive: true });
+  await tool.execute({ command: "open", url: "https://example.com" });
+  const result = await tool.execute({ command: "click", selector: "e3" });
+  assert.equal(result.success, false);
+  assert.match(result.error, /snapshot/);
+});
+
+test("non-ref selectors are never guarded, even without a prior snapshot", async () => {
+  const calls = [];
+  const tool = new BrowserTool("llm-browser", fakeRunner(calls));
+  const result = await tool.execute({ command: "click", selector: "#submit" });
+  assert.equal(result.success, true);
+  assert.equal(calls.length, 1);
+});
+
 test("isBrowserCliAvailable distinguishes a missing binary from an installed one", async () => {
   assert.equal(await isBrowserCliAvailable("node"), true);
   assert.equal(
