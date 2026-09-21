@@ -40,7 +40,7 @@ export class LocalModel implements AIModel {
   ) {}
 
   async generate(request: GenerateRequest): Promise<string> {
-    const deadline = createDeadline(120_000, request.signal);
+    const deadline = createDeadline(300_000, request.signal);
     try {
       return await abortable(
         () => this.generateResponse({ ...request, signal: deadline.signal }),
