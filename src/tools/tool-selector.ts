@@ -113,13 +113,17 @@ ${JSON.stringify(context)}
 
     let parsed: unknown;
 
+    const invalid = (reason: string): ToolSelection => {
+      console.warn(
+        `[ToolSelector] ${reason}. Raw model response: ${response}`,
+      );
+      return { action: "invalid", reason };
+    };
+
     try {
       parsed = JSON.parse(response);
     } catch {
-      return {
-        action: "invalid",
-        reason: "Tool selector returned invalid JSON",
-      };
+      return invalid("Tool selector returned invalid JSON");
     }
 
     if (
@@ -127,10 +131,7 @@ ${JSON.stringify(context)}
       typeof parsed.reason !== "string" ||
       !parsed.reason.trim()
     ) {
-      return {
-        action: "invalid",
-        reason: "Tool selector returned an invalid decision",
-      };
+      return invalid("Tool selector returned an invalid decision");
     }
 
     if (
@@ -151,17 +152,11 @@ ${JSON.stringify(context)}
         ["action", "name", "input", "reason"].includes(key),
       )
     ) {
-      return {
-        action: "invalid",
-        reason: "Tool selector returned an invalid decision",
-      };
+      return invalid("Tool selector returned an invalid decision");
     }
 
     if (!definitions.some((definition) => definition.name === parsed.name)) {
-      return {
-        action: "invalid",
-        reason: `Tool selector chose an unknown tool: ${parsed.name}`,
-      };
+      return invalid(`Tool selector chose an unknown tool: ${parsed.name}`);
     }
 
     // Tool-specific argument validation happens before execution.
