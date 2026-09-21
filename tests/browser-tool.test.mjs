@@ -148,6 +148,32 @@ test("navigating again invalidates a prior snapshot's refs", async () => {
   assert.match(result.error, /snapshot/);
 });
 
+test("click --text without a selector is rejected until snapshot has run", async () => {
+  const calls = [];
+  const tool = new BrowserTool("llm-browser", fakeRunner(calls));
+  const result = await tool.execute({ command: "click", text: "Add to cart" });
+  assert.equal(result.success, false);
+  assert.match(result.error, /snapshot/);
+  assert.equal(calls.length, 0);
+});
+
+test("click --text is allowed once snapshot has run since the last navigation", async () => {
+  const calls = [];
+  const tool = new BrowserTool("llm-browser", fakeRunner(calls));
+  await tool.execute({ command: "snapshot", interactive: true });
+  const result = await tool.execute({ command: "click", text: "Add to cart" });
+  assert.equal(result.success, true);
+  assert.deepEqual(calls[1].args, ["click", "--text", "Add to cart"]);
+});
+
+test("click --text alongside an explicit selector is not guarded by the text rule", async () => {
+  const calls = [];
+  const tool = new BrowserTool("llm-browser", fakeRunner(calls));
+  const result = await tool.execute({ command: "click", selector: "#submit", text: "Add to cart" });
+  assert.equal(result.success, true);
+  assert.deepEqual(calls[0].args, ["click", "#submit", "--text", "Add to cart"]);
+});
+
 test("non-ref selectors are never guarded, even without a prior snapshot", async () => {
   const calls = [];
   const tool = new BrowserTool("llm-browser", fakeRunner(calls));

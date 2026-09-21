@@ -283,6 +283,12 @@ in the selector argument, not the bare ref. Ref selectors are rejected
 by this tool if no "snapshot" has been called since the last navigation
 (open/back/forward/reload/close), since refs from a prior page are stale.
 
+Prefer a ref over "click"'s --text fallback. If you do use --text,
+never guess the wording or its capitalization ("Add to Cart" is not
+the same string as "Add to cart") — copy it verbatim from a "snapshot"
+or "get text" result observed this turn. --text clicks are rejected by
+this tool under the same no-snapshot-since-navigation rule as refs.
+
 To search for a product on a specific website (not a general web
 search), use this loop: "open" the site (its homepage or a known
 search/category URL), "snapshot" with interactive true to find the
@@ -379,6 +385,24 @@ export class BrowserTool implements Tool {
           `but no "snapshot" call has been made since the last navigation. ` +
           `Call "snapshot" (with --interactive) first to get a current, ` +
           `valid ref for this page before retrying "${command}".`,
+      };
+    }
+
+    if (
+      command === "click" &&
+      typeof input.text === "string" &&
+      typeof input.selector !== "string" &&
+      !this.snapshotTakenSinceNavigation
+    ) {
+      return {
+        success: false,
+        output: null,
+        error:
+          `"click" with --text has no selector and no "snapshot" has been ` +
+          `called since the last navigation, so this text was not verified ` +
+          `against the current page. Call "snapshot" first and use the ` +
+          `exact visible text (case-sensitive) from its output, or click a ` +
+          `ref instead of guessing --text.`,
       };
     }
 
